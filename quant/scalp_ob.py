@@ -47,6 +47,15 @@ class ScalpConfig:
     conf_choch: bool = True           # cloture au-dela du micro-swing oppose
     wick_ratio: float = 1.5
 
+    # --- leviers d'amelioration a tester -------------------------------
+    min_confirmations: int = 1        # exiger 2 confirmations simultanees ?
+    atr_pct_floor: float = 0.0        # percentile de vol minimum (0 = desactive)
+    atr_pct_cap: float = 100.0        # percentile de vol maximum
+    breakeven_at_r: float = 0.0       # >0 : stop a l'entree apres ce multiple
+    allowed_confirmations: tuple[str, ...] = ()   # () = toutes
+    allowed_hours: tuple[int, ...] = ()           # () = toutes
+    direction_filter: str = "both"    # "both" | "long" | "short"
+
     stop_mode: str = "confirmation"   # "confirmation" (serre) ou "ob" (large)
     stop_buffer_atr: float = 0.15
     tp_r: float = 1.0                 # petit TP assume
@@ -88,28 +97,38 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
     for a, b in cfg.killzones:
         kz |= (hours >= a) & (hours < b)
 
+    atr_pct = pd.Series(atr, index=idx).rolling(
+        2880, min_periods=500).rank(pct=True).to_numpy() * 100.0
+
     def confirmed(j: int, d: int) -> str | None:
-        """Retourne le nom de la premiere confirmation validee, sinon None."""
+        """Retourne les confirmations validees, ou None si le seuil n'est
+        pas atteint. Empiler des confirmations reduit la frequence : le test
+        dira si cela ameliore vraiment l'esperance ou seulement le confort."""
+        found = []
         body = abs(c[j] - o[j]); rng = h[j] - l[j]
         if cfg.conf_rejection_wick and rng > 0:
             wick = (min(o[j], c[j]) - l[j]) if d > 0 else (h[j] - max(o[j], c[j]))
             if body > 0 and wick >= cfg.wick_ratio * body and \
                ((c[j] > o[j]) if d > 0 else (c[j] < o[j])):
-                return "meche_rejet"
+                found.append("meche_rejet")
         if cfg.conf_engulfing and j >= 1:
             prev_bear = c[j-1] < o[j-1]; prev_bull = c[j-1] > o[j-1]
             if d > 0 and prev_bear and c[j] > o[j] and c[j] >= o[j-1] and o[j] <= c[j-1]:
-                return "englobante"
+                found.append("englobante")
             if d < 0 and prev_bull and c[j] < o[j] and c[j] <= o[j-1] and o[j] >= c[j-1]:
-                return "englobante"
+                found.append("englobante")
         if cfg.conf_choch:
             micro = np.nan
             for k in range(j - cfg.fractal_k, max(j - 12, 1), -1):
                 if d > 0 and sh[k]: micro = h[k]; break
                 if d < 0 and sl[k]: micro = l[k]; break
             if not np.isnan(micro) and ((c[j] > micro) if d > 0 else (c[j] < micro)):
-                return "choch"
-        return None
+                found.append("choch")
+        if cfg.allowed_confirmations:
+            found = [f for f in found if f in cfg.allowed_confirmations]
+        if len(found) < cfg.min_confirmations:
+            return None
+        return "+".join(sorted(found))
 
     equity = cfg.capital; trades = []; per_day = {}
     rej = {"pas_dOB": 0, "pas_imbalance": 0, "zone_non_touchee": 0,
@@ -122,9 +141,17 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         if per_day.get(day, 0) >= cfg.max_trades_per_day:
             i += 1; continue
 
+        if cfg.allowed_hours and hours[i] not in cfg.allowed_hours:
+            i += 1; continue
+        pv = atr_pct[i]
+        if not np.isnan(pv) and (pv < cfg.atr_pct_floor or pv > cfg.atr_pct_cap):
+            i += 1; continue
+
         d = trend[i] if cfg.use_trend_filter else np.sign(c[i] - o[i - cfg.impulse_bars])
         if np.isnan(d) or d == 0:
             i += 1; continue
+        if cfg.direction_filter == "long" and d < 0: i += 1; continue
+        if cfg.direction_filter == "short" and d > 0: i += 1; continue
 
         move = c[i] - o[i - cfg.impulse_bars + 1]
         if np.sign(move) != d or abs(move) < cfg.impulse_atr * atr[i]:
@@ -181,11 +208,21 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             r_mult, why = -1.0, "stop"
         else:
             hit = False
+            be_px = entry_px + d * (cfg.spread_usd + cfg.slippage_usd)
+            be_trigger = entry_px + d * cfg.breakeven_at_r * risk
+            be_done = False
             for j in range(entry_at + 1, min(entry_at + cfg.max_hold_bars, n)):
                 s_ = (l[j] <= stop_px) if d > 0 else (h[j] >= stop_px)
                 t_ = (h[j] >= target_px) if d > 0 else (l[j] <= target_px)
-                if s_: r_mult, why, hit = -1.0, "stop", True; break
+                if s_:
+                    r = (stop_px - entry_px) * d / risk
+                    r_mult, why, hit = r, ("breakeven" if be_done else "stop"), True; break
                 if t_: r_mult, why, hit = cfg.tp_r, "cible", True; break
+                # remontee du stop apres un certain avancement
+                if cfg.breakeven_at_r > 0 and not be_done:
+                    reached = (h[j] >= be_trigger) if d > 0 else (l[j] <= be_trigger)
+                    if reached:
+                        stop_px, be_done = be_px, True
             if not hit:
                 j = min(entry_at + cfg.max_hold_bars - 1, n - 1)
                 r_mult = (c[j] - entry_px) * d / risk
@@ -198,6 +235,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
                        "direction": "long" if d > 0 else "short",
                        "confirmation": kind, "stop_dist": risk,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
+                       "hour": idx[entry_at].hour,
                        "exit": why, "equity": equity})
         if equity < 50: break
         i = entry_at + 1
