@@ -112,6 +112,7 @@ type OB
     int   dir
     bool  plus      // true = avec imbalance (OB+), false = OB simple
     int   born
+    int   obBar     // indice de la bougie SOURCE : identifie la zone de facon unique
     bool  used
     box   bx
     box   fx
@@ -126,6 +127,19 @@ mv      = close - open[impBars - 1]
 dirImp  = mv > 0 ? 1 : mv < 0 ? -1 : 0
 impulse = not na(atr) and atr > 0 and dirImp != 0
            and math.abs(mv) >= impATR * atr
+
+// POINT CRUCIAL : un Order Block est la derniere bougie inverse precedant
+// UN rallye. Il y en a donc UN par rallye, pas un par bougie.
+//
+// La condition d'impulsion ci-dessus est un ETAT : elle reste vraie pendant
+// toute la duree du mouvement. L'utiliser telle quelle creait une nouvelle
+// zone a chaque bougie du rallye, soit une dizaine de zones empilees pour
+// un seul mouvement.
+//
+// On ne retient donc que le DECLENCHEMENT de l'impulsion, c'est-a-dire la
+// bougie ou la condition devient vraie apres avoir ete fausse. Un rallye
+// ne produit alors qu'une seule detection.
+impulseStart = impulse and (not impulse[1] or dirImp != dirImp[1])
 
 // L'Order Block est la derniere bougie INVERSE avant l'impulsion.
 findOB(int dir) =>
@@ -143,19 +157,21 @@ hasImb(int obIdx, int dir) =>
     obIdx >= 2 ? (dir > 0 ? low[obIdx - 2] > high[obIdx]
                           : high[obIdx - 2] < low[obIdx]) : false
 
-if barstate.isconfirmed and impulse
+if barstate.isconfirmed and impulseStart
     obIdx = findOB(dirImp)
     if obIdx > 0
         isPlus = hasImb(obIdx, dirImp)
         if showSimple or isPlus
             t = math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
             b = math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
-            // evite de redessiner la meme zone deux fois
+            srcBar = bar_index - obIdx
+            // Deduplication sur l'INDICE de la bougie source, pas sur son
+            // prix : deux bougies distinctes peuvent avoir le meme sommet,
+            // et une meme bougie ne doit jamais produire deux zones.
             dup = false
             if array.size(obs) > 0
                 for i = 0 to array.size(obs) - 1
-                    e = array.get(obs, i)
-                    if e.dir == dirImp and math.abs(e.top - t) < syminfo.mintick
+                    if array.get(obs, i).obBar == srcBar
                         dup := true
             if not dup
                 col = dirImp > 0 ? (isPlus ? cBull : cBull2)
@@ -178,8 +194,8 @@ if barstate.isconfirmed and impulse
                      xloc = xloc.bar_index, style = label.style_label_left,
                      color = color.new(col, 10), textcolor = color.white,
                      size = size.tiny)
-                array.push(obs, OB.new(t, b, dirImp, isPlus, bar_index, false,
-                     nb, nf, nl))
+                array.push(obs, OB.new(t, b, dirImp, isPlus, bar_index, srcBar,
+                     false, nb, nf, nl))
 
 // purge : zones traversees, expirees, ou trop eloignees du prix
 if array.size(obs) > 0
@@ -329,28 +345,41 @@ obScan() =>
     var array<float> sB = array.new<float>()
     var array<bool>  sP = array.new<bool>()
 
-    a  = ta.atr(200)
-    m  = close - open[impBars - 1]
-    dd = m > 0 ? 1 : m < 0 ? -1 : 0
-    if not na(a) and a > 0 and dd != 0 and math.abs(m) >= impATR * a
+    var int lastBullBar = -1
+    var int lastBearBar = -1
+
+    a   = ta.atr(200)
+    m   = close - open[impBars - 1]
+    dd  = m > 0 ? 1 : m < 0 ? -1 : 0
+    imp = not na(a) and a > 0 and dd != 0 and math.abs(m) >= impATR * a
+    // Meme regle que sur le graphique : un rallye produit UN Order Block.
+    // On ne retient que le declenchement de l'impulsion.
+    impStart = imp and (not imp[1] or dd != dd[1])
+
+    if impStart
         idx = -1
         for j = impBars to impBars + 10
             if j < bar_index and idx == -1
                 if (dd > 0 ? close[j] < open[j] : close[j] > open[j])
                     idx := j
         if idx > 0
-            t = math.max(math.max(open[idx], close[idx]), high[idx])
-            b = math.min(math.min(open[idx], close[idx]), low[idx])
-            p = idx >= 2 ? (dd > 0 ? low[idx - 2] > high[idx]
-                                   : high[idx - 2] < low[idx]) : false
-            if dd > 0
-                array.push(bT, t), array.push(bB, b), array.push(bP, p)
-                if array.size(bT) > 8
-                    array.shift(bT), array.shift(bB), array.shift(bP)
-            else
-                array.push(sT, t), array.push(sB, b), array.push(sP, p)
-                if array.size(sT) > 8
-                    array.shift(sT), array.shift(sB), array.shift(sP)
+            srcBar = bar_index - idx
+            already = dd > 0 ? srcBar == lastBullBar : srcBar == lastBearBar
+            if not already
+                t = math.max(math.max(open[idx], close[idx]), high[idx])
+                b = math.min(math.min(open[idx], close[idx]), low[idx])
+                p = idx >= 2 ? (dd > 0 ? low[idx - 2] > high[idx]
+                                       : high[idx - 2] < low[idx]) : false
+                if dd > 0
+                    lastBullBar := srcBar
+                    array.push(bT, t), array.push(bB, b), array.push(bP, p)
+                    if array.size(bT) > 8
+                        array.shift(bT), array.shift(bB), array.shift(bP)
+                else
+                    lastBearBar := srcBar
+                    array.push(sT, t), array.push(sB, b), array.push(sP, p)
+                    if array.size(sT) > 8
+                        array.shift(sT), array.shift(sB), array.shift(sP)
 
     // invalidation : le prix a traverse la zone
     if array.size(bB) > 0
