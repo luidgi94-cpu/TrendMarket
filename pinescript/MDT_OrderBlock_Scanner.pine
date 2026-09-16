@@ -82,8 +82,10 @@ trendExpr() =>
      lookahead = barmerge.lookahead_off)
 
 inKZ = not useKZ or (hour(time, "UTC") >= kzStart and hour(time, "UTC") < kzEnd)
-bias = htfDir
-strongEnough = htfForce >= minForce
+// math.sign() renvoie un float et request.security conserve ce type :
+// on repasse en entier, sinon les comparaisons de direction echouent.
+bias = na(htfDir) ? 0 : int(math.sign(htfDir))
+strongEnough = not na(htfForce) and htfForce >= minForce
 
 // --------------------------------------------------------- ORDER BLOCKS ---
 type OB
