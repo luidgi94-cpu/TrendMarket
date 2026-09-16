@@ -34,9 +34,17 @@ indicator("MDT Order Block Scanner", overlay = true,
 
 // ---------------------------------------------------------------- ENTREES --
 gOB = "1. Detection des Order Blocks"
-impBars  = input.int(5,    "Bougies d'impulsion", minval = 2,        group = gOB)
-impATR   = input.float(0.8,"Taille mini de l'impulsion (x ATR)", step = 0.1, group = gOB,
-     tooltip = "Baisser cette valeur = plus d'Order Blocks detectes.")
+obLookback = input.int(20, "Recherche de la bougie inverse (bougies)", minval = 3, group = gOB,
+     tooltip = "On remonte depuis la bougie courante jusqu'a la premiere " +
+               "bougie de couleur opposee. C'est elle l'Order Block.")
+minLegBars = input.int(2,  "Bougies d'impulsion minimum", minval = 1, maxval = 10, group = gOB,
+     tooltip = "Nombre minimal de bougies dans le sens du mouvement apres " +
+               "l'Order Block. A 1, une simple alternance de couleurs " +
+               "suffirait et l'on detecterait des zones en consolidation.")
+impATR   = input.float(1.2,"Taille mini de l'impulsion (x ATR)", step = 0.1, group = gOB,
+     tooltip = "Amplitude du mouvement depuis l'Order Block, en ATR. " +
+               "Monter cette valeur pour ne garder que les impulsions nettes " +
+               "et eliminer les zones creees en consolidation.")
 extendR  = input.bool(true, "Prolonger les zones jusqu'au prix",     group = gOB,
      tooltip = "Une zone reste un niveau valide tant que le prix ne l'a pas " +
                "cassee. Son rectangle doit donc se prolonger jusqu'a la " +
@@ -133,32 +141,31 @@ type OB
 
 var array<OB> obs = array.new<OB>()
 
-// Impulsion : mouvement net sur impBars bougies. AUCUN filtre de tendance
-// ni d'horaire ici : une zone existe independamment du fait qu'on veuille
-// la trader ou non.
-mv      = close - open[impBars - 1]
-dirImp  = mv > 0 ? 1 : mv < 0 ? -1 : 0
-impulse = not na(atr) and atr > 0 and dirImp != 0
-           and math.abs(mv) >= impATR * atr
-
-// POINT CRUCIAL : un Order Block est la derniere bougie inverse precedant
-// UN rallye. Il y en a donc UN par rallye, pas un par bougie.
+// AUCUN filtre de tendance ni d'horaire dans la detection : une zone
+// existe independamment du fait qu'on veuille la trader ou non.
+// ---------------------------------------------------------------------------
+//  DEFINITION APPLIQUEE : l'Order Block est la DERNIERE bougie inverse
+//  precedant l'impulsion en cours.
 //
-// La condition d'impulsion ci-dessus est un ETAT : elle reste vraie pendant
-// toute la duree du mouvement. L'utiliser telle quelle creait une nouvelle
-// zone a chaque bougie du rallye, soit une dizaine de zones empilees pour
-// un seul mouvement.
+//  On part donc de la bougie courante et on REMONTE jusqu'a rencontrer la
+//  premiere bougie de couleur opposee. Par construction, c'est la derniere
+//  bougie inverse avant le mouvement.
 //
-// On ne retient donc que le DECLENCHEMENT de l'impulsion, c'est-a-dire la
-// bougie ou la condition devient vraie apres avoir ete fausse. Un rallye
-// ne produit alors qu'une seule detection.
-impulseStart = impulse and (not impulse[1] or dirImp != dirImp[1])
+//  La version precedente cherchait cette bougie entre cinq et quinze
+//  bougies en arriere, en supposant une impulsion de longueur fixe. Elle
+//  enjambait donc la vraie bougie inverse pour en designer une plus
+//  ancienne, sans rapport avec le mouvement, et validait au passage de
+//  simples oscillations de consolidation comme des impulsions.
+// ---------------------------------------------------------------------------
 
-// L'Order Block est la derniere bougie INVERSE avant l'impulsion.
+// Direction donnee par la bougie courante, cloturee.
+dirImp = close > open ? 1 : close < open ? -1 : 0
+
+// Remontee jusqu'a la premiere bougie de couleur opposee.
 findOB(int dir) =>
     idx = -1
-    for j = impBars to impBars + 10
-        if j < bar_index and idx == -1
+    for j = 1 to obLookback
+        if idx == -1 and j < bar_index
             isOpp = dir > 0 ? close[j] < open[j] : close[j] > open[j]
             if isOpp
                 idx := j
@@ -170,9 +177,19 @@ hasImb(int obIdx, int dir) =>
     obIdx >= 2 ? (dir > 0 ? low[obIdx - 2] > high[obIdx]
                           : high[obIdx - 2] < low[obIdx]) : false
 
-if barstate.isconfirmed and impulseStart
+if barstate.isconfirmed and dirImp != 0 and not na(atr) and atr > 0
     obIdx = findOB(dirImp)
-    if obIdx > 0
+    // Trois conditions pour qu'il y ait reellement impulsion :
+    //   - au moins deux bougies dans le sens du mouvement apres l'OB,
+    //     sinon une simple alternance de couleurs suffirait
+    //   - l'impulsion a DEPASSE l'Order Block, ce qui la distingue d'une
+    //     oscillation a l'interieur d'une consolidation
+    //   - l'amplitude atteint le seuil en ATR
+    nLeg   = obIdx - 1
+    broke  = obIdx > 0 and (dirImp > 0 ? close > high[obIdx] : close < low[obIdx])
+    legAmp = obIdx > 0 ? math.abs(close - (dirImp > 0 ? low[obIdx] : high[obIdx])) : 0.0
+    strong = legAmp >= impATR * atr
+    if obIdx > 0 and nLeg >= minLegBars and broke and strong
         isPlus = hasImb(obIdx, dirImp)
         // Zone = CORPS de la bougie par defaut. Inclure les meches epaissit
         // la zone d'un facteur deux a trois, ce qui eloigne d'autant le stop
@@ -404,21 +421,23 @@ obScan() =>
     var int lastBullBar = -1
     var int lastBearBar = -1
 
-    a   = ta.atr(200)
-    m   = close - open[impBars - 1]
-    dd  = m > 0 ? 1 : m < 0 ? -1 : 0
-    imp = not na(a) and a > 0 and dd != 0 and math.abs(m) >= impATR * a
-    // Meme regle que sur le graphique : un rallye produit UN Order Block.
-    // On ne retient que le declenchement de l'impulsion.
-    impStart = imp and (not imp[1] or dd != dd[1])
+    a  = ta.atr(200)
+    dd = close > open ? 1 : close < open ? -1 : 0
 
-    if impStart
+    // Meme definition que sur le graphique : on remonte depuis la bougie
+    // courante jusqu'a la premiere bougie de couleur opposee.
+    if dd != 0 and not na(a) and a > 0
         idx = -1
-        for j = impBars to impBars + 10
-            if j < bar_index and idx == -1
+        for j = 1 to obLookback
+            if idx == -1 and j < bar_index
                 if (dd > 0 ? close[j] < open[j] : close[j] > open[j])
                     idx := j
+        legOk = false
         if idx > 0
+            br = dd > 0 ? close > high[idx] : close < low[idx]
+            am = math.abs(close - (dd > 0 ? low[idx] : high[idx]))
+            legOk := idx - 1 >= minLegBars and br and am >= impATR * a
+        if idx > 0 and legOk
             srcBar = bar_index - idx
             already = dd > 0 ? srcBar == lastBullBar : srcBar == lastBearBar
             float t = na
