@@ -1,0 +1,31 @@
+ECHANTILLON COMPLET (436 jours, seuil 0.8, sans prise partielle)
+  groupe    n      WR      R reel   temoin    ecart      t
+  OB+      163   42.9%   +0.477   +0.166   +0.312   +2.15
+  OB      2348   39.2%   +0.316   +0.245   +0.071   +1.94
+  tout    2511   39.5%   +0.327   +0.240   +0.087   +2.44
+  avantage OB+ : +0.241 R
+
+DECOMPOSITION TEMPORELLE (coupure 2025-11-07)
+  PREMIERE MOITIE (216 jours)
+    OB+   n   88   WR 39.8%   R +0.363   temoin +0.296   ecart +0.067   t +0.34
+    OB    n 1215   WR 41.4%   R +0.380   temoin +0.323   ecart +0.058   t +1.12
+    avantage OB+ : +0.009 R
+  SECONDE MOITIE (221 jours)
+    OB+   n   75   WR 46.7%   R +0.611   temoin +0.379   ecart +0.232   t +1.08
+    OB    n 1122   WR 36.5%   R +0.238   temoin +0.329   ecart -0.091   t -1.75
+    avantage OB+ : +0.323 R
+
+VERDICT : NON ETABLI.
+L'avantage de l'echantillon complet provient presque entierement de la
+seconde moitie ; sur la premiere il vaut +0.009 R. Aucune moitie n'atteint
+t = 2, et les effectifs sont de 88 et 75 trades. Dans la seconde moitie,
+l'ecart se creuse surtout parce que les OB simples se degradent, non parce
+que les OB+ progressent.
+
+A la difference du systeme M5 complet, qui passait de t +2.03 a t -4.37,
+l'effet ne s'inverse pas : les deux moitiees sont positives ou nulles.
+L'imbalance n'est donc pas refutee, elle est indeterminee. Cela ne change
+pas la decision : un effet que l'on ne sait pas distinguer du bruit se
+trade comme du bruit.
+
+Les OB+ representent 6.5% des trades, soit 0.37 signal par jour.
