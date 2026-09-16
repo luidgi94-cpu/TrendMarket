@@ -450,13 +450,32 @@ obScan() =>
     ef = ta.ema(close, emaFast)
     es = ta.ema(close, emaSlow)
     td = ef > es ? 1 : ef < es ? -1 : 0
-    [td, bT, bB, bP, sT, sB, sP]
 
-[t5,  b5t,  b5b,  b5p,  s5t,  s5b,  s5p ] = request.security(syminfo.tickerid, "5",   obScan(), lookahead = barmerge.lookahead_off)
-[t15, b15t, b15b, b15p, s15t, s15b, s15p] = request.security(syminfo.tickerid, "15",  obScan(), lookahead = barmerge.lookahead_off)
-[t60, b60t, b60b, b60p, s60t, s60b, s60p] = request.security(syminfo.tickerid, "60",  obScan(), lookahead = barmerge.lookahead_off)
-[t240,b240t,b240b,b240p,s240t,s240b,s240p]= request.security(syminfo.tickerid, "240", obScan(), lookahead = barmerge.lookahead_off)
-[tD,  bDt,  bDb,  bDp,  sDt,  sDb,  sDp ] = request.security(syminfo.tickerid, "D",   obScan(), lookahead = barmerge.lookahead_off)
+    // Etat de signal PROPRE a cette unite de temps : le prix revient dans
+    // la zone et une confirmation apparait sur la meme unite. Sans cela le
+    // tableau annoncait des zones sans jamais dire qu'un signal s'y etait
+    // declenche, et un signal H1 passait inapercu depuis un graphique M5.
+    bd = math.abs(close - open)
+    lw = math.min(open, close) - low
+    uw = high - math.max(open, close)
+    cb = (useWick and bd > 0 and lw >= wickRatio * bd and close > open)
+         or (useEngulf and close[1] < open[1] and close > open
+             and close >= open[1] and open <= close[1])
+    cs = (useWick and bd > 0 and uw >= wickRatio * bd and close < open)
+         or (useEngulf and close[1] > open[1] and close < open
+             and close <= open[1] and open >= close[1])
+    sg = 0
+    if not na(bT) and low <= bT and high >= bB and cb and td > 0
+        sg := 1
+    if not na(sT) and low <= sT and high >= sB and cs and td < 0
+        sg := -1
+    [td, bT, bB, bP, sT, sB, sP, sg]
+
+[t5,  b5t,  b5b,  b5p,  s5t,  s5b,  s5p, g5 ] = request.security(syminfo.tickerid, "5",   obScan(), lookahead = barmerge.lookahead_off)
+[t15, b15t, b15b, b15p, s15t, s15b, s15p, g15] = request.security(syminfo.tickerid, "15",  obScan(), lookahead = barmerge.lookahead_off)
+[t60, b60t, b60b, b60p, s60t, s60b, s60p, g60] = request.security(syminfo.tickerid, "60",  obScan(), lookahead = barmerge.lookahead_off)
+[t240,b240t,b240b,b240p,s240t,s240b,s240p, g240]= request.security(syminfo.tickerid, "240", obScan(), lookahead = barmerge.lookahead_off)
+[tD,  bDt,  bDb,  bDp,  sDt,  sDb,  sDp, gD ] = request.security(syminfo.tickerid, "D",   obScan(), lookahead = barmerge.lookahead_off)
 
 zone(float zt, float zb) =>
     na(zt) or na(zb) ? "—"
@@ -467,14 +486,14 @@ zone(float zt, float zb) =>
 var table tb = na
 if showTable and barstate.islast
     table.delete(tb)
-    tb := table.new(position.bottom_right, 6, 13, bgcolor = color.new(#131722, 5),
+    tb := table.new(position.bottom_right, 7, 13, bgcolor = color.new(#131722, 5),
          border_width = 1, border_color = color.new(color.gray, 70),
          frame_width = 1, frame_color = color.new(#2962ff, 50))
     hdr = color.new(#1e222d, 0)
 
     table.cell(tb, 0, 0, "SCANNER MULTI-UNITES", text_color = #2962ff,
          text_size = size.normal, bgcolor = hdr)
-    table.merge_cells(tb, 0, 0, 5, 0)
+    table.merge_cells(tb, 0, 0, 6, 0)
 
     table.cell(tb, 0, 1, "UT",       text_color = color.silver, text_size = size.small, bgcolor = hdr)
     table.cell(tb, 1, 1, "Tendance", text_color = color.silver, text_size = size.small, bgcolor = hdr)
@@ -482,6 +501,7 @@ if showTable and barstate.islast
     table.cell(tb, 3, 1, "Qual.",    text_color = color.silver, text_size = size.small, bgcolor = hdr)
     table.cell(tb, 4, 1, "OB Vente", text_color = #f23645,      text_size = size.small, bgcolor = hdr)
     table.cell(tb, 5, 1, "Qual.",    text_color = color.silver, text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 6, 1, "SIGNAL",   text_color = color.yellow, text_size = size.small, bgcolor = hdr)
 
     lbls = array.from("M5", "M15", "H1", "H4", "D")
     tds  = array.from(t5, t15, t60, t240, tD)
@@ -491,6 +511,7 @@ if showTable and barstate.islast
     sts  = array.from(s5t, s15t, s60t, s240t, sDt)
     sbs  = array.from(s5b, s15b, s60b, s240b, sDb)
     sps  = array.from(s5p, s15p, s60p, s240p, sDp)
+    sgs  = array.from(g5, g15, g60, g240, gD)
 
     for i = 0 to 4
         r  = i + 2
@@ -510,6 +531,14 @@ if showTable and barstate.islast
              text_color = na(st) ? color.gray : #f23645, text_size = size.tiny)
         table.cell(tb, 5, r, na(st) ? "" : (array.get(sps, i) ? "OB+" : "OB"),
              text_color = na(st) ? color.gray : (array.get(sps, i) ? color.yellow : color.silver),
+             text_size = size.tiny)
+        // Signal declenche sur CETTE unite de temps, meme si le graphique
+        // en affiche une autre. Sans cette colonne, un signal H1 restait
+        // invisible depuis un graphique M5.
+        gg = array.get(sgs, i)
+        table.cell(tb, 6, r, gg > 0 ? "ACHAT" : gg < 0 ? "VENTE" : "—",
+             text_color = gg > 0 ? color.white : gg < 0 ? color.white : color.gray,
+             bgcolor = gg > 0 ? #089981 : gg < 0 ? #f23645 : color.new(color.gray, 90),
              text_size = size.tiny)
 
     sumT = (t5 > 0 ? 1 : t5 < 0 ? -1 : 0) + (t15 > 0 ? 1 : t15 < 0 ? -1 : 0) +
@@ -532,7 +561,7 @@ if showTable and barstate.islast
          text_size = size.tiny, bgcolor = hdr)
 
     table.cell(tb, 0, 8, "POSITION", text_color = #2962ff, text_size = size.normal, bgcolor = hdr)
-    table.merge_cells(tb, 0, 8, 5, 8)
+    table.merge_cells(tb, 0, 8, 6, 8)
 
     hasPos = eDir != 0
     table.cell(tb, 0, 9, "Sens", text_color = color.silver, text_size = size.small)
@@ -578,7 +607,7 @@ if showTable and barstate.islast
     table.cell(tb, 2, 12, str.tostring(nS) + " vente", text_color = #f23645, text_size = size.tiny)
     table.cell(tb, 3, 12, str.tostring(maxDraw) + " dessinees/sens",
          text_color = color.silver, text_size = size.tiny)
-    table.merge_cells(tb, 3, 12, 5, 12)
+    table.merge_cells(tb, 3, 12, 6, 12)
 
 // -------------------------------------------------------------- ALERTES ---
 alertcondition(newSignal and eDir > 0, "Signal ACHAT",
