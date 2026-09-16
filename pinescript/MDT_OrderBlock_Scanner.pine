@@ -122,6 +122,10 @@ showOB    = input.bool(true, "Zones Order Block",                    group = gV)
 showFVG   = input.bool(true, "Zones d'imbalance",                    group = gV)
 showTrade = input.bool(true, "Entree / SL / TP",                     group = gV)
 showTable = input.bool(true, "Tableau",                              group = gV)
+showHors  = input.bool(false, "Montrer aussi les signaux hors filtres", group = gV,
+     tooltip = "Affiche en gris les setups valides qui sont rejetes par " +
+               "le filtre de tendance H1 ou par la plage horaire. Sert a " +
+               "voir ce que les filtres coutent en frequence.")
 cBull  = input.color(color.new(#089981, 80), "OB+ achat",            group = gV)
 cBull2 = input.color(color.new(#2962ff, 86), "OB achat simple",      group = gV)
 cBear  = input.color(color.new(#f23645, 80), "OB+ vente",            group = gV)
@@ -323,34 +327,10 @@ var line lS = na
 var line lT1 = na
 var line lT2 = na
 
-newSignal = false
-if barstate.isconfirmed and eDir == 0 and inKZ and trendOk and array.size(obs) > 0
-    for i = 0 to array.size(obs) - 1
-        o = array.get(obs, i)
-        dirOk  = not useTrend or o.dir == bias
-        inside = low <= o.top and high >= o.bot
-        if not o.used and dirOk and inside and not newSignal
-            ok = o.dir > 0 ? confBull : confBear
-            if ok
-                sp = o.dir > 0 ? o.bot - bufATR * atr : o.top + bufATR * atr
-                rk = math.abs(close - sp)
-                if rk > 0
-                    eDir    := o.dir
-                    eEntry  := close
-                    eStop   := sp
-                    eRisk   := rk
-                    eTp1    := close + o.dir * tp1R * rk
-                    eTp2    := close + o.dir * tp2R * rk
-                    eTp1Hit := false
-                    eConf   := o.dir > 0 ? nameOf(wickBull, engBull, chochBull)
-                                         : nameOf(wickBear, engBear, chochBear)
-                    eKind   := o.plus ? "OB+" : "OB"
-                    eStat   := "EN COURS"
-                    eBar    := bar_index
-                    o.used  := true
-                    newSignal := true
-
-if eDir != 0 and not newSignal
+// --- 1. GESTION DU SUIVI EN COURS ----------------------------------------
+// Placee AVANT la detection : un suivi qui se termine sur cette bougie
+// libere immediatement la place, au lieu d'attendre la bougie suivante.
+if eDir != 0
     hitS  = eDir > 0 ? low  <= eStop : high >= eStop
     hitT1 = eDir > 0 ? high >= eTp1  : low  <= eTp1
     hitT2 = eDir > 0 ? high >= eTp2  : low  <= eTp2
@@ -366,15 +346,75 @@ if eDir != 0 and not newSignal
         if hitT2
             eStat := "TP2 ATTEINT"
             eDir  := 0
-    // Sortie au temps : sans elle, un suivi qui n'atteint ni son stop ni sa
-    // cible bloque le scanner indefiniment et aucun signal ne reapparait.
+    // Sortie au temps. Sans elle, un suivi qui n'atteint ni son stop ni sa
+    // cible bloquait le scanner indefiniment et aucun signal ne reapparaissait.
     if eDir != 0 and not na(eBar) and bar_index - eBar >= maxHold
         eStat := "CLOS SUR DUREE"
         eDir  := 0
 
+// --- 2. DETECTION DES SIGNAUX --------------------------------------------
+// Un signal est DESSINE des qu'un setup est valide, meme si un suivi est
+// deja en cours. Auparavant la detection etait conditionnee a eDir == 0 :
+// pendant les quatre heures d'un suivi, tous les setups restaient
+// invisibles. Seul le panneau POSITION reste monopolise par le suivi.
+int    sDir   = 0
+float  sEntry = na
+float  sStop  = na
+float  sTp1   = na
+float  sTp2   = na
+float  sRisk  = na
+string sConf  = ""
+string sKind  = ""
+bool   sPasse = false
+
+if barstate.isconfirmed and array.size(obs) > 0
+    for i = 0 to array.size(obs) - 1
+        o = array.get(obs, i)
+        inside = low <= o.top and high >= o.bot
+        if not o.used and inside and sDir == 0
+            ok = o.dir > 0 ? confBull : confBear
+            if ok
+                sp = o.dir > 0 ? o.bot - bufATR * atr : o.top + bufATR * atr
+                rk = math.abs(close - sp)
+                if rk > 0
+                    dirOk = not useTrend or o.dir == bias
+                    passe = inKZ and trendOk and dirOk
+                    if passe or showHors
+                        sDir   := o.dir
+                        sEntry := close
+                        sStop  := sp
+                        sRisk  := rk
+                        sTp1   := close + o.dir * tp1R * rk
+                        sTp2   := close + o.dir * tp2R * rk
+                        if o.dir > 0
+                            sConf := nameOf(wickBull, engBull, chochBull)
+                        else
+                            sConf := nameOf(wickBear, engBear, chochBear)
+                        sKind  := o.plus ? "OB+" : "OB"
+                        sPasse := passe
+                        o.used := true
+
+// --- 3. REPRISE PAR LE PANNEAU POSITION ----------------------------------
+// Seul un signal qui passe les filtres, et seulement si aucun suivi n'est
+// deja en cours, alimente le panneau POSITION et les lignes de niveaux.
+newSignal = sDir != 0 and sPasse and eDir == 0
+if newSignal
+    eDir    := sDir
+    eEntry  := sEntry
+    eStop   := sStop
+    eRisk   := sRisk
+    eTp1    := sTp1
+    eTp2    := sTp2
+    eTp1Hit := false
+    eConf   := sConf
+    eKind   := sKind
+    eStat   := "EN COURS"
+    eBar    := bar_index
+
 pnlR = eDir != 0 and not na(eRisk) and eRisk > 0
      ? (close - eEntry) * eDir / eRisk : na
 
+// Les lignes de niveaux ne sont tracees que pour le suivi en cours.
 if showTrade and newSignal
     line.delete(lE)
     line.delete(lS)
@@ -385,21 +425,32 @@ if showTrade and newSignal
     lT1 := line.new(bar_index, eTp1,   bar_index + 50, eTp1,   color = #ff9800,
          width = 1, style = line.style_dashed)
     lT2 := line.new(bar_index, eTp2,   bar_index + 50, eTp2,   color = #089981, width = 2)
-    // etiquette ancree sur la bougie d'entree, du meme cote que la fleche
-    label.new(bar_index, eDir > 0 ? low : high,
-         (eDir > 0 ? "ACHAT " : "VENTE ") + eKind + " | " + eConf +
-         "\nEntree " + str.tostring(eEntry, format.mintick) +
-         "   SL " + str.tostring(eStop, format.mintick) +
-         "\nTP1 " + str.tostring(eTp1, format.mintick) +
-         "   TP2 " + str.tostring(eTp2, format.mintick),
-         style = eDir > 0 ? label.style_label_up : label.style_label_down,
-         color = eDir > 0 ? color.new(#089981, 10) : color.new(#f23645, 10),
-         textcolor = color.white, size = size.small)
 
-plotshape(newSignal and eDir > 0, "Achat", shape.triangleup, location.belowbar,
+// L'etiquette est posee pour CHAQUE signal detecte, pas seulement pour
+// celui qui alimente le panneau POSITION. Un setup apparu pendant un suivi
+// en cours reste ainsi visible, ce qui n'etait pas le cas auparavant.
+if showTrade and sDir != 0
+    color col = color.new(color.gray, 25)
+    if sPasse
+        col := sDir > 0 ? color.new(#089981, 10) : color.new(#f23645, 10)
+    label.new(bar_index, sDir > 0 ? low : high,
+         (sDir > 0 ? "ACHAT " : "VENTE ") + sKind + " | " + sConf +
+         (sPasse ? "" : "  (hors filtre)") +
+         "\nEntree " + str.tostring(sEntry, format.mintick) +
+         "   SL " + str.tostring(sStop, format.mintick) +
+         "\nTP1 " + str.tostring(sTp1, format.mintick) +
+         "   TP2 " + str.tostring(sTp2, format.mintick),
+         style = sDir > 0 ? label.style_label_up : label.style_label_down,
+         color = col, textcolor = color.white, size = size.small)
+
+plotshape(sDir > 0 and sPasse,  "Achat", shape.triangleup, location.belowbar,
      #089981, size = size.small)
-plotshape(newSignal and eDir < 0, "Vente", shape.triangledown, location.abovebar,
+plotshape(sDir < 0 and sPasse,  "Vente", shape.triangledown, location.abovebar,
      #f23645, size = size.small)
+plotshape(sDir > 0 and not sPasse, "Achat hors filtre", shape.triangleup,
+     location.belowbar, color.gray, size = size.tiny)
+plotshape(sDir < 0 and not sPasse, "Vente hors filtre", shape.triangledown,
+     location.abovebar, color.gray, size = size.tiny)
 
 // ------------------------------------------------ SCAN PAR UNITE DE TEMPS --
 // Renvoie la tendance et, par sens, l'Order Block encore valide le plus
@@ -610,7 +661,9 @@ if showTable and barstate.islast
     table.merge_cells(tb, 3, 12, 6, 12)
 
 // -------------------------------------------------------------- ALERTES ---
-alertcondition(newSignal and eDir > 0, "Signal ACHAT",
+alertcondition(sDir > 0 and sPasse, "Signal ACHAT",
      "Order Block haussier confirme sur {{ticker}} {{interval}}")
-alertcondition(newSignal and eDir < 0, "Signal VENTE",
+alertcondition(sDir < 0 and sPasse, "Signal VENTE",
      "Order Block baissier confirme sur {{ticker}} {{interval}}")
+alertcondition(sDir != 0 and sPasse, "Signal ACHAT ou VENTE",
+     "Signal Order Block sur {{ticker}} {{interval}}")
