@@ -1,0 +1,213 @@
+"""Order Block scalping : haute frequence, petit TP, fort winrate vise.
+
+Cahier des charges :
+  - 3 a 4 trades par jour minimum
+  - petits take-profit assumes (RR faible)
+  - Order Block comme point d'interet, zone OTE NON obligatoire
+  - imbalance optionnelle
+  - UNE confirmation suffit parmi : meche de rejet, bougie de rejet,
+    bougie englobante, micro-CHoCH
+  - trades courts
+
+Discipline anti-lookahead conservee de bout en bout :
+  entree a la CLOTURE de la bougie de confirmation, simulation a partir de
+  la bougie suivante, stop seul teste sur la bougie d'entree, fractales
+  lues avec leur retard de confirmation.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+import pandas as pd
+
+
+@dataclass
+class ScalpConfig:
+    capital: float = 450.0
+    units: float = 1.0
+    spread_usd: float = 0.25
+    slippage_usd: float = 0.10
+
+    htf_fast: int = 20
+    htf_slow: int = 60
+    use_trend_filter: bool = True
+    fractal_k: int = 2
+
+    impulse_bars: int = 5
+    impulse_atr: float = 0.8          # seuil bas = plus de setups
+    require_imbalance: bool = False
+
+    poi_valid_bars: int = 48          # duree de vie de l'OB (4h en M5)
+    confirm_bars: int = 6             # fenetre de confirmation apres touche
+
+    # --- confirmations : UNE SEULE suffit -------------------------------
+    conf_rejection_wick: bool = True  # meche >= k x corps, du bon cote
+    conf_engulfing: bool = True       # bougie englobante
+    conf_choch: bool = True           # cloture au-dela du micro-swing oppose
+    wick_ratio: float = 1.5
+
+    stop_mode: str = "confirmation"   # "confirmation" (serre) ou "ob" (large)
+    stop_buffer_atr: float = 0.15
+    tp_r: float = 1.0                 # petit TP assume
+    max_hold_bars: int = 48           # trade court : 4h maximum
+    max_trades_per_day: int = 6
+    killzones: tuple[tuple[int, int], ...] = ((7, 16),)
+    max_risk_pct: float = 0.99
+
+
+def _atr(df: pd.DataFrame, w: int) -> np.ndarray:
+    prev = df.close.shift(1)
+    tr = pd.concat([df.high - df.low, (df.high - prev).abs(),
+                    (df.low - prev).abs()], axis=1).max(axis=1)
+    return tr.rolling(w, min_periods=w // 2).mean().to_numpy()
+
+
+def _swings(h, l, k):
+    n = len(h); sh = np.zeros(n, bool); sl = np.zeros(n, bool)
+    for i in range(k, n - k):
+        if h[i] == h[i-k:i+k+1].max() and (h[i-k:i+k+1] == h[i]).sum() == 1: sh[i] = True
+        if l[i] == l[i-k:i+k+1].min() and (l[i-k:i+k+1] == l[i]).sum() == 1: sl[i] = True
+    return sh, sl
+
+
+def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, dict]:
+    idx = m5.index
+    o = m5.open.to_numpy(); h = m5.high.to_numpy()
+    l = m5.low.to_numpy(); c = m5.close.to_numpy()
+    hours = idx.hour.to_numpy(); days = idx.normalize(); n = len(idx)
+    atr = _atr(m5, 288)
+    sh, sl = _swings(h, l, cfg.fractal_k)
+
+    h1 = m5.resample("1h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
+    tr = np.sign(h1.close.ewm(span=cfg.htf_fast).mean()
+                 - h1.close.ewm(span=cfg.htf_slow).mean()).shift(1)
+    trend = tr.reindex(idx, method="ffill").to_numpy()
+
+    kz = np.zeros(n, bool)
+    for a, b in cfg.killzones:
+        kz |= (hours >= a) & (hours < b)
+
+    def confirmed(j: int, d: int) -> str | None:
+        """Retourne le nom de la premiere confirmation validee, sinon None."""
+        body = abs(c[j] - o[j]); rng = h[j] - l[j]
+        if cfg.conf_rejection_wick and rng > 0:
+            wick = (min(o[j], c[j]) - l[j]) if d > 0 else (h[j] - max(o[j], c[j]))
+            if body > 0 and wick >= cfg.wick_ratio * body and \
+               ((c[j] > o[j]) if d > 0 else (c[j] < o[j])):
+                return "meche_rejet"
+        if cfg.conf_engulfing and j >= 1:
+            prev_bear = c[j-1] < o[j-1]; prev_bull = c[j-1] > o[j-1]
+            if d > 0 and prev_bear and c[j] > o[j] and c[j] >= o[j-1] and o[j] <= c[j-1]:
+                return "englobante"
+            if d < 0 and prev_bull and c[j] < o[j] and c[j] <= o[j-1] and o[j] >= c[j-1]:
+                return "englobante"
+        if cfg.conf_choch:
+            micro = np.nan
+            for k in range(j - cfg.fractal_k, max(j - 12, 1), -1):
+                if d > 0 and sh[k]: micro = h[k]; break
+                if d < 0 and sl[k]: micro = l[k]; break
+            if not np.isnan(micro) and ((c[j] > micro) if d > 0 else (c[j] < micro)):
+                return "choch"
+        return None
+
+    equity = cfg.capital; trades = []; per_day = {}
+    rej = {"pas_dOB": 0, "pas_imbalance": 0, "zone_non_touchee": 0,
+           "pas_de_confirmation": 0, "risque_trop_grand": 0}
+    i = 300
+    while i < n - cfg.poi_valid_bars - cfg.max_hold_bars - 2:
+        day = days[i]
+        if not kz[i] or np.isnan(atr[i]) or atr[i] <= 0:
+            i += 1; continue
+        if per_day.get(day, 0) >= cfg.max_trades_per_day:
+            i += 1; continue
+
+        d = trend[i] if cfg.use_trend_filter else np.sign(c[i] - o[i - cfg.impulse_bars])
+        if np.isnan(d) or d == 0:
+            i += 1; continue
+
+        move = c[i] - o[i - cfg.impulse_bars + 1]
+        if np.sign(move) != d or abs(move) < cfg.impulse_atr * atr[i]:
+            i += 1; continue
+
+        ob = -1
+        for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
+            if (c[j] < o[j]) if d > 0 else (c[j] > o[j]):
+                ob = j; break
+        if ob < 0:
+            rej["pas_dOB"] += 1; i += 1; continue
+        ob_lo, ob_hi = min(o[ob], c[ob], l[ob]), max(o[ob], c[ob], h[ob])
+
+        if cfg.require_imbalance:
+            ok = (l[ob+2] > h[ob]) if d > 0 else (h[ob+2] < l[ob])
+            if ob + 2 >= n or not ok:
+                rej["pas_imbalance"] += 1; i += 1; continue
+
+        # retour dans l'Order Block (zone OTE non requise)
+        touch = -1
+        for j in range(i + 1, min(i + cfg.poi_valid_bars, n)):
+            if (l[j] < ob_lo) if d > 0 else (h[j] > ob_hi):
+                break
+            if l[j] <= ob_hi and h[j] >= ob_lo:
+                touch = j; break
+        if touch < 0:
+            rej["zone_non_touchee"] += 1; i += 1; continue
+
+        # UNE confirmation suffit
+        entry_at, kind = -1, None
+        for j in range(touch, min(touch + cfg.confirm_bars, n)):
+            k = confirmed(j, int(d))
+            if k: entry_at, kind = j, k; break
+            if (l[j] < ob_lo) if d > 0 else (h[j] > ob_hi): break
+        if entry_at < 0:
+            rej["pas_de_confirmation"] += 1; i = touch + 1; continue
+
+        entry_px = c[entry_at]
+        if cfg.stop_mode == "confirmation":
+            base = l[entry_at] if d > 0 else h[entry_at]
+        else:
+            base = ob_lo if d > 0 else ob_hi
+        stop_px = base - d * cfg.stop_buffer_atr * atr[entry_at]
+        risk = abs(entry_px - stop_px)
+        if risk <= 0:
+            i = entry_at + 1; continue
+        if risk * cfg.units + (cfg.spread_usd + cfg.slippage_usd) * cfg.units \
+                > equity * cfg.max_risk_pct:
+            rej["risque_trop_grand"] += 1; i = entry_at + 1; continue
+        target_px = entry_px + d * cfg.tp_r * risk
+
+        r_mult, why = 0.0, "fin_fenetre"
+        if (l[entry_at] <= stop_px) if d > 0 else (h[entry_at] >= stop_px):
+            r_mult, why = -1.0, "stop"
+        else:
+            hit = False
+            for j in range(entry_at + 1, min(entry_at + cfg.max_hold_bars, n)):
+                s_ = (l[j] <= stop_px) if d > 0 else (h[j] >= stop_px)
+                t_ = (h[j] >= target_px) if d > 0 else (l[j] <= target_px)
+                if s_: r_mult, why, hit = -1.0, "stop", True; break
+                if t_: r_mult, why, hit = cfg.tp_r, "cible", True; break
+            if not hit:
+                j = min(entry_at + cfg.max_hold_bars - 1, n - 1)
+                r_mult = (c[j] - entry_px) * d / risk
+
+        cost = (cfg.spread_usd + cfg.slippage_usd) * cfg.units
+        pnl = r_mult * risk * cfg.units - cost
+        equity += pnl
+        per_day[day] = per_day.get(day, 0) + 1
+        trades.append({"date": day, "entry_ts": idx[entry_at],
+                       "direction": "long" if d > 0 else "short",
+                       "confirmation": kind, "stop_dist": risk,
+                       "R": pnl / (risk * cfg.units), "pnl": pnl,
+                       "exit": why, "equity": equity})
+        if equity < 50: break
+        i = entry_at + 1
+
+    df = pd.DataFrame(trades); nd = idx.normalize().nunique()
+    st = {"jours": nd, "nb_trades": len(df),
+          "trades_par_jour": len(df) / nd if nd else 0.0,
+          "capital_final": equity, "rejets": rej}
+    if not df.empty:
+        st |= {"winrate": (df.pnl > 0).mean(), "R_moyen": df.R.mean(),
+               "stop_median": df.stop_dist.median(),
+               "part_cibles": (df.exit == "cible").mean()}
+    return df, st
