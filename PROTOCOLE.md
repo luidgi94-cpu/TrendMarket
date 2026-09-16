@@ -11,17 +11,25 @@ serie de pertes n'est pas un plan de risque, c'est une rationalisation.
 
 ## 1. Ce qui a ete mesure, et ce qui ne l'a pas ete
 
-Sur 527 jours de XAUUSD reel, export MetaTrader 5 du broker :
+Sur **436 jours** de XAUUSD reel, export MetaTrader 5 du courtier,
+9 janvier 2025 au 16 septembre 2026, 588 732 minutes :
 
-    2 070 trades | 3.93 par jour | winrate 57.4%
-    esperance +0.178 R brute | +0.115 R nette de frais
-    temoin par permutation +0.063 R | ecart +0.115 R | p = 0.0001
-    ecart type par trade 1.19 R
-    drawdown maximum observe -49.7%
+    2 122 trades | 4.87 par jour | winrate 59.9%
+    R moyen +0.173 net de frais | stop median 5.68 points
 
-Frais modelises : 0.23 USD de spread + 0.10 USD de slippage, aller-retour,
-par once. Sur un stop median de 5 points, cela represente 0.066 R, soit
-**36% de l'esperance brute**.
+**Correction d'une erreur anterieure.** Les chiffres annonces jusqu'ici
+(527 jours, 3.93 trades par jour) provenaient d'un export different qui
+comptait vraisemblablement les week-ends. 436 jours ouvres correspond
+exactement a la periode couverte. La frequence reelle est de 4.87 trades
+par jour, non 3.93.
+
+Frais : **spread mesure** sur la colonne `<SPREAD>` de l'export, mediane
+**0.150 USD** l'once, q95 0.200. L'hypothese de 0.23 utilisee auparavant
+etait pessimiste. Avec 0.10 de slippage suppose, le cout vaut 0.25 USD
+aller-retour, soit **0.044 R** sur un stop median de 5.68 points.
+
+Le slippage reste une hypothese non verifiee : il ne se lit pas dans des
+donnees de bougies.
 
 Ce qui N'A PAS ete mesure, et qu'il ne faut donc pas supposer acquis :
 
@@ -42,16 +50,20 @@ disponibles.
 L'edge net vaut +0.115 R. Le cout vaut 0.066 R. Le rapport entre les deux
 est le seul chiffre qui decide de la rentabilite de ce systeme.
 
-| Spread moyen | Cout en R | Edge net |
-|---|---|---|
-| 0.23 (modelise) | 0.066 | +0.115 |
-| 0.30 | 0.080 | +0.101 |
-| 0.35 | 0.090 | **+0.091** |
-| 0.50 | 0.120 | +0.061 |
+Le spread ayant ete mesure et non suppose, ce risque est plus faible
+qu'anticipe. Il subsiste sur deux heures serveur :
 
-Douze cents de spread supplementaires retirent 21% de l'edge. Avant toute
-autre optimisation, verifier le spread reellement paye sur le releve du
-courtier, pas celui affiche dans la plateforme.
+| Heure serveur | Mediane | % des minutes > 0.30 |
+|---|---|---|
+| seance (03h-22h) | 0.11 - 0.15 | 0.1% a 0.9% |
+| **23h** | 0.170 | **10.3%** |
+| **01h** | 0.150 | **8.9%** |
+
+Ces deux heures encadrent le rollover. La plage horaire du systeme les
+exclut, et c'est une raison de ne pas l'elargir.
+
+Le slippage, lui, n'est pas mesure. C'est desormais la principale
+inconnue de cout, et le forward test doit servir a la lever.
 
 ---
 
@@ -64,7 +76,7 @@ fraction de 0.01 lot.
 | | 0.01 lot | 0.02 lot |
 |---|---|---|
 | Prise partielle au TP1 | impossible | possible |
-| Risque par trade (stop 5 pts) | 5 USD = 1.11% | 10 USD = 2.22% |
+| Risque par trade (stop median 5.68 pts) | 5.68 USD = **1.26%** | 11.36 USD = **2.52%** |
 | Drawdown extrapole | ~-50% | ~-75% |
 
 **Decision : 0.01 lot, sans prise partielle, sortie unique au TP2 (3 R).**
@@ -81,9 +93,10 @@ celui qui a ete valide. L'ecart doit etre mesure, pas suppose negligeable.
 
 ## 4. Contrainte d'execution : la tolerance est inferieure au point
 
-Esperance de +0.115 R sur un stop de 5 points = **0.58 point par trade**.
+Esperance de +0.115 R sur le stop median de 5.68 points =
+**0.65 point par trade**.
 
-Une entree passee 0.6 point plus haut que le prix de signal annule
+Une entree passee 0.65 point plus haut que le prix de signal annule
 **l'integralite** de l'esperance. Pas une part : la totalite.
 
 Il n'existe que deux modes d'execution compatibles avec cette tolerance :
@@ -121,12 +134,15 @@ jamais ete teste, et dont l'effet est donc inconnu.
 | Limite | Seuil | Action |
 |---|---|---|
 | Trades par jour | 3 | on arrete d'en prendre |
+| Largeur de stop | > 7 points | on ne prend pas le trade |
 | Pertes consecutives | 2 | on arrete pour la journee |
 | Perte journaliere | -3% | on arrete pour la journee |
 | Perte sur le compte | **-25% (337 USD)** | **arret complet et reexamen** |
 
-Le plafond de 3 trades par jour, contre 10 dans le backtest, borne le
-risque journalier a 3.3%.
+Le plafond de 3 trades par jour, contre 10 dans le backtest et 4.87
+effectivement observes, borne le risque journalier a **3.8%** au stop
+median. Il implique de laisser passer, certains jours, des signaux
+valides : c'est le prix de la contrainte de capital, assume.
 
 Le seuil d'arret a -25% merite une justification, parce qu'il coute de
 l'esperance. Le drawdown observe sur le backtest atteint -49.7%. Tenir
@@ -148,7 +164,8 @@ par trade de 1.19 R :
 
     n = (1.96 x 1.19 / 0.115)^2 = 411 trades
 
-A 3 trades par jour : **environ 137 jours de bourse, soit sept mois.**
+A 3 trades par jour plafonnes : **environ 137 jours de bourse, soit sept
+mois.**
 
 Avant ce volume, les resultats en direct ne permettent aucune conclusion
 sur la validite du systeme. Une bonne semaine ne valide rien ; une
@@ -168,11 +185,15 @@ sur les donnees de test, ce qui detruit toute valeur informative du test.
 
 ## 8. Ce qui reste a faire avant d'engager du capital reel
 
-1. Relancer le balayage du filtre de force sur les donnees M1 reelles
-   (`balayage_force.py`), chaque seuil contre son temoin.
-2. Mesurer la variante **sans prise partielle**, seule praticable.
-3. Mesurer l'effet du **filtre de stop a 7 points**.
-4. Verifier le spread reellement paye sur le releve du courtier.
+1. ~~Relancer le balayage du filtre de force~~ : en cours.
+2. ~~Mesurer la variante sans prise partielle~~ : en cours.
+3. ~~Mesurer l'effet du filtre de stop a 7 points~~ : en cours.
+4. ~~Verifier le spread reellement paye~~ : **fait**, mediane 0.150 USD,
+   soit 35% moins cher que l'hypothese initiale.
+5. Corriger la plage horaire des scripts Pine : **fait**. Le serveur du
+   courtier est en UTC+3, sa plage 6h-20h serveur vaut 3h-17h en vrai
+   UTC. Les scripts utilisaient 6h-20h UTC, soit une plage jamais testee
+   qui incluait de surcroit l'heure de rollover.
 5. Forward test en demo, taille reelle, procedure reelle, sur au moins
    50 trades, pour mesurer le **slippage d'execution effectif**. Si le
    decalage median depasse 0.5 point, le systeme n'est pas executable a

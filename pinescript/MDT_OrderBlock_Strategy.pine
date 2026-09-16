@@ -51,8 +51,15 @@ emaFast  = input.int(20,   "EMA rapide", minval = 2,                 group = gE)
 emaSlow  = input.int(60,   "EMA lente",  minval = 5,                 group = gE)
 minForce = input.float(0.6,"Force mini de la tendance", step = 0.1,  group = gE)
 useKZ    = input.bool(true, "Filtrer les heures",                    group = gE)
-kzStart  = input.int(6,  "Debut (heure UTC)", minval = 0, maxval = 23, group = gE)
-kzEnd    = input.int(20, "Fin (heure UTC)",   minval = 0, maxval = 23, group = gE)
+// Le backtest applique sa plage sur l'heure SERVEUR du courtier, qui est
+// en UTC+3 (confirme par le pic de volatilite a 15h30 serveur, soit la
+// publication macro americaine de 12h30 UTC). Sa plage 6h-20h serveur
+// vaut donc 3h-17h en vrai UTC, et c'est cette plage qu'il faut utiliser
+// ici puisque hour(time, "UTC") renvoie du vrai UTC.
+// Au passage, cela exclut 23h serveur, l'heure de rollover ou le spread
+// double : 10% des minutes y depassent 0.30 USD contre 0.1% en seance.
+kzStart  = input.int(3,  "Debut (heure UTC)", minval = 0, maxval = 23, group = gE)
+kzEnd    = input.int(17, "Fin (heure UTC)",   minval = 0, maxval = 23, group = gE)
 maxDay   = input.int(10, "Trades max par jour", minval = 1,          group = gE)
 
 gC = "3. Confirmations"

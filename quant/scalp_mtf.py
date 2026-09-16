@@ -28,7 +28,14 @@ import pandas as pd
 class MTFConfig:
     capital: float = 450.0
     units: float = 1.0
-    spread_usd: float = 0.23
+    # Spread MESURE sur la colonne <SPREAD> de l'export MT5 du courtier :
+    # 588 732 minutes, mediane 0.150 USD l'once, q95 0.200. La valeur de
+    # 0.23 utilisee auparavant etait une hypothese pessimiste.
+    # Deux heures serveur font exception, 23h et 01h, ou le rollover porte
+    # 9 a 10% des minutes au-dela de 0.30. La plage horaire les exclut.
+    spread_usd: float = 0.15
+    # Le slippage reste une hypothese : il ne se lit pas dans des donnees
+    # de bougies. A confirmer sur releve de compte en forward test.
     slippage_usd: float = 0.10
 
     htf_fast: int = 20

@@ -92,6 +92,14 @@ def detect_server_offset(df: pd.DataFrame) -> int:
     """
     rng = (df.high - df.low).groupby(df.index.hour).mean()
     quietest = int(rng.idxmin())
+    # AVERTISSEMENT : cette heuristique cherche l'heure la plus calme, et
+    # se fait piéger par l'artefact de rollover de minuit, qui produit un
+    # faux pic de volatilite. Sur l'export XAUUSD du courtier elle repond
+    # UTC+1 alors que le decalage reel est UTC+3.
+    # La calibration fiable passe par les publications macro americaines de
+    # 12h30 UTC : chercher le pic de volatilite intrajournalier et en
+    # retrancher 12h30. Sur ces donnees le pic tombe a 15h30 serveur, d'ou
+    # UTC+3.
     return (quietest - 22) % 24
 
 
