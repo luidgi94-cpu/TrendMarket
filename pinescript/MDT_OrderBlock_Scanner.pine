@@ -209,18 +209,26 @@ if array.size(obs) > 0
             box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
             array.remove(obs, i)
 
-    // On ne conserve que les zones les PLUS PROCHES du prix, par sens.
-    // Une zone lointaine n'a aucune utilite en scalping : le prix ne
-    // l'atteindra pas dans l'horizon de la position.
+// On ne conserve que les zones les PLUS PROCHES du prix, par sens.
+// Une zone lointaine n'a aucune utilite en scalping : le prix ne
+// l'atteindra pas dans l'horizon de la position.
+//
+// Cette boucle a sa PROPRE garde de taille, et n'est plus imbriquee dans
+// le bloc precedent. La premiere boucle peut avoir vide le tableau : on
+// entrait alors ici avec "for i = -1 to 0", donc un appel a array.get avec
+// un index negatif. Pine leve une erreur d'execution et cesse TOUT rendu :
+// plus aucune zone, plus de tableau, plus rien sur le graphique.
+if array.size(obs) > 0
     for i = array.size(obs) - 1 to 0
         o = array.get(obs, i)
         d = math.abs(close - (o.top + o.bot) / 2)
         nearer = 0
-        for j = 0 to array.size(obs) - 1
-            if j != i
-                e = array.get(obs, j)
-                if e.dir == o.dir and math.abs(close - (e.top + e.bot) / 2) < d
-                    nearer += 1
+        if array.size(obs) > 1
+            for j = 0 to array.size(obs) - 1
+                if j != i
+                    e = array.get(obs, j)
+                    if e.dir == o.dir and math.abs(close - (e.top + e.bot) / 2) < d
+                        nearer += 1
         if nearer >= maxOB
             box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
             array.remove(obs, i)
