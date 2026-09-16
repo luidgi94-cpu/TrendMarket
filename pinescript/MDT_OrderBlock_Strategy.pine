@@ -2,13 +2,50 @@
 // ============================================================================
 //  MDT ORDER BLOCK  -  STRATEGIE (Strategy Tester TradingView)
 // ============================================================================
-//  Transcription des regles validees sur 527 jours de XAUUSD reel
-//  (export MetaTrader 5 du broker, janvier 2025 - septembre 2026) :
+//  AVERTISSEMENT - CE SYSTEME N'EST PAS VALIDE
+// ============================================================================
+//  Les performances annoncees dans les versions precedentes de cet en-tete
+//  (+0.115 R, p = 0.0001) NE SE REPRODUISENT PAS sur l'export MetaTrader 5
+//  du courtier : 588 732 minutes, 436 jours, 9 janvier 2025 au 16 septembre
+//  2026. Elles provenaient d'un echantillon different et ne doivent pas
+//  etre utilisees.
 //
-//    2 070 trades | 3.93 par jour | winrate 57.4%
-//    esperance +0.178 R | temoin par permutation +0.063 R
-//    ecart net +0.115 R | p = 0.0001
+//  Mesure actuelle, chaque configuration comparee a un temoin construit en
+//  melangeant les bougies M1 a l'interieur de chaque heure. Seul l'ECART au
+//  temoin mesure de l'edge ; le R brut et le winrate recompensent la
+//  geometrie du marche autant que le signal.
 //
+//    seuil de force  trades  winrate  ecart au temoin      t
+//      0.0            4198    60.5%      +0.005          0.30
+//      0.4            3479    60.7%      +0.016          0.76
+//      0.6            3020    60.4%      +0.004          0.17
+//      0.8            2511    60.9%      +0.029          1.20
+//      1.0            2122    59.8%      -0.002         -0.08
+//      1.2            1798    59.8%      -0.020         -0.71
+//      1.5            1282    61.0%      -0.037         -1.13
+//      2.0             594    63.3%      -0.020         -0.41
+//      2.5             294    63.6%      -0.062         -0.90
+//
+//  Aucun seuil n'atteint t = 2. Cinq sont negatifs, c'est-a-dire moins bons
+//  que des bougies melangees au hasard. Noter le winrate : environ 60% sur
+//  toutes les lignes, y compris celles qui perdent contre le hasard. Un
+//  winrate sans temoin ne mesure rien.
+//
+//  Une piste subsiste. En retirant la prise partielle au premier objectif,
+//  l'ecart passe de +0.029 a +0.140 avec t = 2.99, le winrate tombant a
+//  40%. L'explication serait que l'edge d'un Order Block loge dans les
+//  rares mouvements qui vont loin, et que le partiel ampute precisement
+//  cette queue de distribution. Ce resultat est issu de 36 configurations
+//  testees, sur un seuil choisi parce qu'il etait le meilleur : corrige du
+//  nombre de tests il retombe vers p = 0.10. Il est en cours de validation
+//  hors echantillon.
+//
+//  EN L'ETAT, NE PAS ENGAGER DE CAPITAL REEL SUR CE SYSTEME.
+//  L'indicateur reste utilisable pour VISUALISER des Order Blocks. Ce n'est
+//  pas une strategie validee.
+// ============================================================================
+//
+// ============================================================================
 //  REGLES
 //    OB        derniere bougie inverse entre impBars et impBars+10 bougies
 //              en arriere, MECHES COMPRISES
