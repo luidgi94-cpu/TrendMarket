@@ -314,12 +314,16 @@ if showTrade and newSignal
     lT1 := line.new(bar_index, eTp1,   bar_index + 60, eTp1,   color = #ff9800, width = 1,
          style = line.style_dashed)
     lT2 := line.new(bar_index, eTp2,   bar_index + 60, eTp2,   color = #089981, width = 2)
-    label.new(bar_index, eDir > 0 ? eStop : eTp2,
-         (eDir > 0 ? "ACHAT " : "VENTE ") + eKind + "\n" + eConf +
+    // L'etiquette est ancree sur la BOUGIE D'ENTREE, du meme cote que la
+    // fleche : sous la bougie pour un achat, au-dessus pour une vente.
+    // Elle etait auparavant posee sur le stop ou sur le second objectif,
+    // donc a un a trois R de distance, loin du point d'entree.
+    label.new(bar_index, eDir > 0 ? low : high,
+         (eDir > 0 ? "ACHAT " : "VENTE ") + eKind + " | " + eConf +
          "\nEntree " + str.tostring(eEntry, format.mintick) +
-         "\nSL "     + str.tostring(eStop,  format.mintick) +
-         "\nTP1 "    + str.tostring(eTp1,   format.mintick) +
-         "\nTP2 "    + str.tostring(eTp2,   format.mintick),
+         "   SL " + str.tostring(eStop, format.mintick) +
+         "\nTP1 "    + str.tostring(eTp1, format.mintick) +
+         "   TP2 " + str.tostring(eTp2, format.mintick),
          style = eDir > 0 ? label.style_label_up : label.style_label_down,
          color = eDir > 0 ? color.new(#089981, 10) : color.new(#f23645, 10),
          textcolor = color.white, size = size.small)
