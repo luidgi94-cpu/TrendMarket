@@ -61,6 +61,8 @@ class ScalpConfig:
     allowed_confirmations: tuple[str, ...] = ()   # () = toutes
     allowed_hours: tuple[int, ...] = ()           # () = toutes
     direction_filter: str = "both"    # "both" | "long" | "short"
+    min_trend_force: float = 0.0      # amplitude minimale de l'ecart d'EMA H1
+    require_h4: bool = False          # exiger l'alignement du H4
 
     # Le stop appartient au niveau d'INVALIDATION de la structure, soit le
     # bas de l'Order Block. Si le prix y repasse, le setup est mort. Le
@@ -100,9 +102,17 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
     sh, sl = _swings(h, l, cfg.fractal_k)
 
     h1 = m5.resample("1h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
-    tr = np.sign(h1.close.ewm(span=cfg.htf_fast).mean()
-                 - h1.close.ewm(span=cfg.htf_slow).mean()).shift(1)
+    spread_h1 = (h1.close.ewm(span=cfg.htf_fast).mean()
+                 - h1.close.ewm(span=cfg.htf_slow).mean())
+    tr = np.sign(spread_h1).shift(1)
     trend = tr.reindex(idx, method="ffill").to_numpy()
+    # force de la tendance : amplitude normalisee, pas seulement le signe
+    strength = (spread_h1.abs() / h1.close.rolling(24).std()).shift(1)
+    tstrength = strength.reindex(idx, method="ffill").to_numpy()
+    # alignement du timeframe superieur (H4)
+    h4 = m5.resample("4h").agg({"close":"last"}).dropna()
+    tr4 = np.sign(h4.close.ewm(span=10).mean() - h4.close.ewm(span=30).mean()).shift(1)
+    trend4 = tr4.reindex(idx, method="ffill").to_numpy()
 
     kz = np.zeros(n, bool)
     for a, b in cfg.killzones:
@@ -163,6 +173,12 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             i += 1; continue
         if cfg.direction_filter == "long" and d < 0: i += 1; continue
         if cfg.direction_filter == "short" and d > 0: i += 1; continue
+        if cfg.min_trend_force > 0:
+            tf = tstrength[i]
+            if np.isnan(tf) or tf < cfg.min_trend_force: i += 1; continue
+        if cfg.require_h4:
+            t4 = trend4[i]
+            if np.isnan(t4) or t4 != d: i += 1; continue
 
         move = c[i] - o[i - cfg.impulse_bars + 1]
         if np.sign(move) != d or abs(move) < cfg.impulse_atr * atr[i]:
@@ -180,6 +196,13 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             ok = (l[ob+2] > h[ob]) if d > 0 else (h[ob+2] < l[ob])
             if ob + 2 >= n or not ok:
                 rej["pas_imbalance"] += 1; i += 1; continue
+
+        # fraicheur de l'Order Block : combien de fois a-t-il deja ete
+        # touche depuis sa formation ? Un OB "frais" est cense mieux tenir.
+        prior_touches = 0
+        for j in range(ob + 1, i + 1):
+            if l[j] <= ob_hi and h[j] >= ob_lo:
+                prior_touches += 1
 
         # retour dans l'Order Block (zone OTE non requise)
         touch = -1
@@ -215,6 +238,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         target_px = entry_px + d * cfg.tp_r * risk
 
         r_mult, why = 0.0, "fin_fenetre"
+        partial_done = False   # defini avant toute sortie possible
         if (l[entry_at] <= stop_px) if d > 0 else (h[entry_at] >= stop_px):
             r_mult, why = -1.0, "stop"
         else:
@@ -229,7 +253,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             else:
                 p_dist = 0.0
             partial_px = entry_px + d * p_dist
-            remaining, realised, partial_done = 1.0, 0.0, False
+            remaining, realised = 1.0, 0.0
             if p_dist <= 0:
                 remaining = 1.0
 
@@ -272,6 +296,13 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
                        "confirmation": kind, "stop_dist": risk,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
                        "hour": idx[entry_at].hour, "partiel": partial_done,
+                       "ob_size_atr": (ob_hi - ob_lo) / atr[i],
+                       "poi_age": touch - i,
+                       "impulse_atr": abs(move) / atr[i],
+                       "trend_force": tstrength[i],
+                       "h4_aligne": bool(trend4[i] == d) if not np.isnan(trend4[i]) else None,
+                       "touches_ob": prior_touches,
+                       "jour_semaine": idx[entry_at].dayofweek,
                        "exit": why, "equity": equity})
         if equity < 50: break
         i = entry_at + 1
