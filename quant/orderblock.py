@@ -140,13 +140,17 @@ def backtest_ob(m5: pd.DataFrame, cfg: OBConfig) -> tuple[pd.DataFrame, dict]:
             rej["pas_impulsion"] += 1; i += 1; continue
         ob_lo, ob_hi = min(o[ob], c[ob], l[ob]), max(o[ob], c[ob], h[ob])
 
-        # ---- 3. IMBALANCE laissee par l'impulsion -------------------------
+        # ---- 3. IMBALANCE ANCREE SUR L'ORDER BLOCK ------------------------
+        # Definition stricte : sur les trois bougies OB / impulsion / suivante,
+        # le HAUT de l'Order Block ne doit pas etre atteint par le BAS de la
+        # troisieme bougie. L'inefficience appartient a l'OB lui-meme, elle
+        # n'est pas cherchee ailleurs dans l'impulsion.
         has_fvg = False
-        for j in range(ob + 1, min(i, n - 1)):
-            if bias > 0 and l[j + 1] > h[j - 1]:
-                has_fvg = True; break
-            if bias < 0 and h[j + 1] < l[j - 1]:
-                has_fvg = True; break
+        if ob + 2 < n:
+            if bias > 0:
+                has_fvg = l[ob + 2] > h[ob]
+            else:
+                has_fvg = h[ob + 2] < l[ob]
         if cfg.require_imbalance and not has_fvg:
             rej["pas_imbalance"] += 1; i += 1; continue
 
@@ -211,8 +215,12 @@ def backtest_ob(m5: pd.DataFrame, cfg: OBConfig) -> tuple[pd.DataFrame, dict]:
             if entry_at < 0:
                 rej["pas_de_confirmation"] += 1; i = touch + 1; continue
         else:
+            # Sans confirmation, l'entree se fait a la CLOTURE de la bougie
+            # qui touche la zone. Supposer un remplissage au meilleur prix de
+            # la zone revient a choisir son fill apres coup : cette hypothese
+            # suffisait a elle seule a rendre le modele rentable sur du bruit.
             entry_at = touch
-            entry_px = min(max(c[touch], zone_lo), zone_hi)
+            entry_px = c[touch]
 
         # ---- 7. stop / cible ---------------------------------------------
         if cfg.exogenous_stop_atr > 0:
