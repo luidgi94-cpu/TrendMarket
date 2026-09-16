@@ -1,74 +1,80 @@
 //@version=6
 // ============================================================================
-//  ORDER BLOCK SCANNER  -  strategie validee sur 527 jours de XAUUSD
+//  MDT ORDER BLOCK SCANNER
 // ============================================================================
-//  Regles issues du backtest (2 070 trades, winrate 57.4%, ecart au temoin
-//  aleatoire +0.115 R, p = 0.0001) :
+//  Regles issues du backtest sur 527 jours de XAUUSD (2 070 trades,
+//  winrate 57.4%, ecart au temoin aleatoire +0.115 R, p = 0.0001) :
 //
-//   TENDANCE      EMA 20/60 en H1, filtre d'AMPLITUDE (pas seulement le signe)
 //   ORDER BLOCK   derniere bougie inverse avant l'impulsion
-//   IMBALANCE     le haut de l'OB n'est pas atteint par le bas de la 3e bougie
+//   OB+           Order Block AVEC imbalance (le haut de l'OB n'est pas
+//                 atteint par le bas de la 3e bougie)  -> qualite superieure
+//   OB            Order Block sans imbalance           -> qualite ordinaire
 //   ENTREE        retour dans l'OB + UNE confirmation parmi trois
-//   STOP          bas de l'Order Block (invalidation), jamais sous la meche
-//   TP1           1.0 R -> ferme 33%, stop a l'equilibre
+//   STOP          bas de l'Order Block (invalidation de structure)
+//   TP1           1.0 R -> ferme une partie, stop a l'equilibre
 //   TP2           3.0 R
 //
-//  Non-repeignant : tous les signaux sont evalues sur bougie CLOTUREE.
+//  IMPORTANT : les Order Blocks sont detectes SANS AUCUN FILTRE et toujours
+//  affiches. Les filtres de tendance et d'horaire ne s'appliquent qu'a la
+//  prise de position, jamais a la detection des zones.
+//
+//  Non-repeignant : signaux evalues sur bougie CLOTUREE, pivots lus avec
+//  leur decalage de confirmation, appels multi-unites en lookahead_off.
 // ============================================================================
 
 indicator("MDT Order Block Scanner", overlay = true,
      max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
 
 // ---------------------------------------------------------------- ENTREES --
-gT = "Tendance"
-htfTrend   = input.timeframe("60",  "Unite de tendance",           group = gT)
-emaFast    = input.int(20,  "EMA rapide",   minval = 2,            group = gT)
-emaSlow    = input.int(60,  "EMA lente",    minval = 5,            group = gT)
-minForce   = input.float(0.6, "Force minimale de tendance", step = 0.1, group = gT,
-     tooltip = "Ecart des EMA normalise par la volatilite. 0.6 est la valeur " +
-               "retenue au backtest : au-dela le filtre devient trop restrictif " +
-               "et fait perdre plus de trades qu'il n'en ameliore.")
+gOB = "1. Detection des Order Blocks"
+impBars  = input.int(5,    "Bougies d'impulsion", minval = 2,        group = gOB)
+impATR   = input.float(0.8,"Taille mini de l'impulsion (x ATR)", step = 0.1, group = gOB,
+     tooltip = "Baisser cette valeur = plus d'Order Blocks detectes.")
+obLife   = input.int(120,  "Duree de vie d'un OB (bougies)",         group = gOB)
+maxOB    = input.int(12,   "Nombre d'OB affiches par sens",          group = gOB)
 
-gOB = "Order Block"
-impBars    = input.int(5,   "Bougies d'impulsion",  minval = 2,    group = gOB)
-impATR     = input.float(0.8, "Impulsion mini (x ATR)", step = 0.1, group = gOB)
-needFVG    = input.bool(false, "Imbalance obligatoire",            group = gOB,
-     tooltip = "Le haut de l'OB ne doit pas etre atteint par le bas de la " +
-               "3e bougie. Exigence stricte : divise la frequence par cinq.")
-obLife     = input.int(48,  "Duree de vie de l'OB (bougies)",      group = gOB)
+gE = "2. Prise de position"
+useTrend = input.bool(true,"Filtrer par la tendance H1",             group = gE)
+htfTrend = input.timeframe("60", "Unite de tendance",                group = gE)
+emaFast  = input.int(20,   "EMA rapide", minval = 2,                 group = gE)
+emaSlow  = input.int(60,   "EMA lente",  minval = 5,                 group = gE)
+minForce = input.float(0.6,"Force mini de la tendance", step = 0.1,  group = gE,
+     tooltip = "Ecart entre les deux EMA divise par la volatilite. " +
+               "Mesure la NETTETE de la tendance, pas sa direction. " +
+               "0.6 est la valeur retenue au backtest.")
+onlyPlus = input.bool(false, "N'entrer que sur les OB+ (avec imbalance)", group = gE)
+useKZ    = input.bool(true, "Filtrer les heures",                    group = gE)
+kzStart  = input.int(6,  "Debut (heure UTC)", minval = 0, maxval = 23, group = gE)
+kzEnd    = input.int(20, "Fin (heure UTC)",   minval = 0, maxval = 23, group = gE)
 
-gC = "Confirmation"
-useWick    = input.bool(true, "Meche de rejet",                    group = gC)
-useEngulf  = input.bool(true, "Bougie englobante",                 group = gC)
-useChoch   = input.bool(true, "Changement de structure",           group = gC)
-wickRatio  = input.float(1.5, "Meche / corps mini", step = 0.1,    group = gC)
-confBars   = input.int(6,   "Fenetre de confirmation",             group = gC)
+gC = "3. Confirmations d'entree"
+useWick   = input.bool(true, "Meche de rejet",                       group = gC)
+useEngulf = input.bool(true, "Bougie englobante",                    group = gC)
+useChoch  = input.bool(true, "Changement de structure (CHoCH)",      group = gC)
+wickRatio = input.float(1.5, "Meche / corps mini", step = 0.1,       group = gC)
 
-gR = "Risque"
-bufATR     = input.float(0.15, "Marge sous l'OB (x ATR)", step = 0.05, group = gR)
-tp1R       = input.float(1.0, "TP1 (en R)", step = 0.1,            group = gR)
-tp2R       = input.float(3.0, "TP2 (en R)", step = 0.1,            group = gR)
-part1      = input.float(33,  "% ferme au TP1", step = 1,          group = gR)
-beAfter    = input.bool(true, "Stop a l'equilibre apres TP1",      group = gR)
+gR = "4. Risque"
+bufATR = input.float(0.15, "Marge sous l'OB (x ATR)", step = 0.05,   group = gR)
+tp1R   = input.float(1.0,  "TP1 (en R)", step = 0.1,                 group = gR)
+tp2R   = input.float(3.0,  "TP2 (en R)", step = 0.1,                 group = gR)
+beAfter= input.bool(true,  "Stop a l'equilibre apres TP1",           group = gR)
 
-gS = "Seance"
-useKZ      = input.bool(true, "Filtrer les heures",                group = gS)
-kzStart    = input.int(6,  "Debut (heure UTC)", minval = 0, maxval = 23, group = gS)
-kzEnd      = input.int(20, "Fin (heure UTC)",   minval = 0, maxval = 23, group = gS)
-
-gV = "Affichage"
-showOB     = input.bool(true, "Zones Order Block",                 group = gV)
-showFVG    = input.bool(true, "Zones d'imbalance",                 group = gV)
-showTrade  = input.bool(true, "Entree / SL / TP",                  group = gV)
-showTable  = input.bool(true, "Tableau multi-unites",              group = gV)
-cBull      = input.color(color.new(#089981, 75), "OB haussier",    group = gV)
-cBear      = input.color(color.new(#f23645, 75), "OB baissier",    group = gV)
-cFvg       = input.color(color.new(#7e57c2, 80), "Imbalance",      group = gV)
+gV = "5. Affichage"
+showOB    = input.bool(true, "Zones Order Block",                    group = gV)
+showFVG   = input.bool(true, "Zones d'imbalance",                    group = gV)
+showSimple= input.bool(true, "Afficher aussi les OB sans imbalance", group = gV)
+showTrade = input.bool(true, "Entree / SL / TP sur le graphique",    group = gV)
+showTable = input.bool(true, "Tableau",                              group = gV)
+cBull = input.color(color.new(#089981, 78), "OB+ achat",             group = gV)
+cBull2= input.color(color.new(#2962ff, 85), "OB achat simple",       group = gV)
+cBear = input.color(color.new(#f23645, 78), "OB+ vente",             group = gV)
+cBear2= input.color(color.new(#ff9800, 85), "OB vente simple",       group = gV)
+cFvg  = input.color(color.new(#7e57c2, 82), "Imbalance",             group = gV)
 
 // ------------------------------------------------------------- CONTEXTE ---
-atr = ta.atr(288)
+atr = ta.atr(200)
 
-// Force de tendance : on mesure l'AMPLITUDE de l'ecart des EMA, pas son signe.
+// Force de tendance : AMPLITUDE de l'ecart des EMA, pas seulement son signe.
 // Le backtest montre une relation monotone entre cette amplitude et le
 // resultat : de -0.085 R en tendance faible a +0.108 R en tendance forte.
 trendExpr() =>
@@ -78,20 +84,21 @@ trendExpr() =>
     sp = ef - es
     [math.sign(sp), sd > 0 ? math.abs(sp) / sd : 0.0]
 
-[htfDir, htfForce] = request.security(syminfo.tickerid, htfTrend, trendExpr(),
-     lookahead = barmerge.lookahead_off)
+[htfDirRaw, htfForceRaw] = request.security(syminfo.tickerid, htfTrend,
+     trendExpr(), lookahead = barmerge.lookahead_off)
+htfDir   = na(htfDirRaw)   ? 0   : int(math.sign(htfDirRaw))
+htfForce = na(htfForceRaw) ? 0.0 : htfForceRaw
 
-inKZ = not useKZ or (hour(time, "UTC") >= kzStart and hour(time, "UTC") < kzEnd)
-// math.sign() renvoie un float et request.security conserve ce type :
-// on repasse en entier, sinon les comparaisons de direction echouent.
-bias = na(htfDir) ? 0 : int(math.sign(htfDir))
-strongEnough = not na(htfForce) and htfForce >= minForce
+inKZ      = not useKZ or (hour(time, "UTC") >= kzStart and hour(time, "UTC") < kzEnd)
+trendOk   = not useTrend or (htfDir != 0 and htfForce >= minForce)
+tradeBias = useTrend ? htfDir : 0
 
-// --------------------------------------------------------- ORDER BLOCKS ---
+// ------------------------------------------- DETECTION DES ORDER BLOCKS ---
 type OB
     float top
     float bot
     int   dir
+    bool  plus      // true = avec imbalance (OB+), false = OB simple
     int   born
     bool  used
     box   bx
@@ -100,78 +107,99 @@ type OB
 
 var array<OB> obs = array.new<OB>()
 
-// Impulsion : mouvement net sur impBars bougies, aligne sur la tendance H1
-move      = close - open[impBars - 1]
-impulseOk = not na(atr) and atr > 0 and math.sign(move) == bias
-             and math.abs(move) >= impATR * atr and bias != 0
+// Impulsion : mouvement net sur impBars bougies. AUCUN filtre de tendance
+// ni d'horaire ici : une zone existe independamment du fait qu'on veuille
+// la trader ou non.
+mv      = close - open[impBars - 1]
+dirImp  = mv > 0 ? 1 : mv < 0 ? -1 : 0
+impulse = not na(atr) and atr > 0 and dirImp != 0
+           and math.abs(mv) >= impATR * atr
 
 // L'Order Block est la derniere bougie INVERSE avant l'impulsion.
 findOB(int dir) =>
     idx = -1
     for j = impBars to impBars + 10
-        if j < bar_index
+        if j < bar_index and idx == -1
             isOpp = dir > 0 ? close[j] < open[j] : close[j] > open[j]
-            if isOpp and idx == -1
+            if isOpp
                 idx := j
     idx
 
-// Imbalance ANCREE sur l'OB : entre la bougie OB et la 3e suivante,
-// le haut de l'OB ne doit pas etre atteint par le bas de la 3e.
-hasImbalance(int obIdx, int dir) =>
-    ok = false
-    if obIdx >= 2
-        ok := dir > 0 ? low[obIdx - 2] > high[obIdx] : high[obIdx - 2] < low[obIdx]
-    ok
+// Imbalance ANCREE sur l'OB : le haut de l'Order Block ne doit pas etre
+// atteint par le bas de la troisieme bougie.
+hasImb(int obIdx, int dir) =>
+    obIdx >= 2 ? (dir > 0 ? low[obIdx - 2] > high[obIdx]
+                          : high[obIdx - 2] < low[obIdx]) : false
 
-if barstate.isconfirmed and impulseOk and inKZ and strongEnough
-    obIdx = findOB(bias)
+if barstate.isconfirmed and impulse
+    obIdx = findOB(dirImp)
     if obIdx > 0
-        okFvg = hasImbalance(obIdx, bias)
-        if not needFVG or okFvg
+        isPlus = hasImb(obIdx, dirImp)
+        if showSimple or isPlus
             t = math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
             b = math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
-            bxc = bias > 0 ? cBull : cBear
-            nb = box.new(bar_index - obIdx, t, bar_index + obLife, b,
-                 bgcolor = showOB ? bxc : na, border_color = color.new(bxc, 40),
-                 xloc = xloc.bar_index)
-            nf = box(na)
-            if showFVG and okFvg
-                ft = bias > 0 ? low[obIdx - 2] : low[obIdx]
-                fb = bias > 0 ? high[obIdx]    : high[obIdx - 2]
-                nf := box.new(bar_index - obIdx + 2, math.max(ft, fb),
-                     bar_index + obLife, math.min(ft, fb),
-                     bgcolor = cFvg, border_color = color.new(cFvg, 30),
-                     xloc = xloc.bar_index)
-            nl = label.new(bar_index + obLife, bias > 0 ? b : t,
-                 bias > 0 ? "OB+" : "OB-", xloc = xloc.bar_index,
-                 style = bias > 0 ? label.style_label_left : label.style_label_left,
-                 color = color.new(bxc, 20), textcolor = color.white, size = size.tiny)
-            array.push(obs, OB.new(t, b, bias, bar_index, false, nb, nf, nl))
+            // evite de redessiner la meme zone deux fois
+            dup = false
+            if array.size(obs) > 0
+                for i = 0 to array.size(obs) - 1
+                    e = array.get(obs, i)
+                    if e.dir == dirImp and math.abs(e.top - t) < syminfo.mintick
+                        dup := true
+            if not dup
+                col = dirImp > 0 ? (isPlus ? cBull : cBull2)
+                                 : (isPlus ? cBear : cBear2)
+                txt = (dirImp > 0 ? "OB" : "OB") + (isPlus ? "+" : "")
+                     + (dirImp > 0 ? " ACHAT" : " VENTE")
+                nb = box.new(bar_index - obIdx, t, bar_index + obLife, b,
+                     bgcolor = showOB ? col : na,
+                     border_color = color.new(col, 30), xloc = xloc.bar_index)
+                nf = box(na)
+                if showFVG and isPlus
+                    ft = dirImp > 0 ? low[obIdx - 2] : low[obIdx]
+                    fb = dirImp > 0 ? high[obIdx]    : high[obIdx - 2]
+                    nf := box.new(bar_index - obIdx + 2, math.max(ft, fb),
+                         bar_index + obLife, math.min(ft, fb), bgcolor = cFvg,
+                         border_color = color.new(cFvg, 40), xloc = xloc.bar_index)
+                nl = label.new(bar_index + obLife, (t + b) / 2, txt,
+                     xloc = xloc.bar_index, style = label.style_label_left,
+                     color = color.new(col, 10), textcolor = color.white,
+                     size = size.tiny)
+                array.push(obs, OB.new(t, b, dirImp, isPlus, bar_index, false,
+                     nb, nf, nl))
 
-// purge : OB expires ou traverses (invalides)
+// purge : zones expirees, traversees, ou au-dela du nombre affiche
 if array.size(obs) > 0
     for i = array.size(obs) - 1 to 0
         o = array.get(obs, i)
-        broken = o.dir > 0 ? low < o.bot : high > o.top
+        broken  = o.dir > 0 ? close < o.bot : close > o.top
         expired = bar_index - o.born > obLife
         if broken or expired
-            box.delete(o.bx)
-            box.delete(o.fx)
-            label.delete(o.lb)
+            box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
+            array.remove(obs, i)
+    nBull = 0, nBear = 0
+    for i = array.size(obs) - 1 to 0
+        o = array.get(obs, i)
+        keep = true
+        if o.dir > 0
+            nBull += 1
+            keep := nBull <= maxOB
+        else
+            nBear += 1
+            keep := nBear <= maxOB
+        if not keep
+            box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
             array.remove(obs, i)
 
-// ------------------------------------------------------- CONFIRMATIONS ---
-body  = math.abs(close - open)
-rng   = high - low
-lowW  = math.min(open, close) - low
-upW   = high - math.max(open, close)
+// --------------------------------------------------------- CONFIRMATIONS --
+body = math.abs(close - open)
+lowW = math.min(open, close) - low
+upW  = high - math.max(open, close)
 
 wickBull   = useWick   and body > 0 and lowW >= wickRatio * body and close > open
 wickBear   = useWick   and body > 0 and upW  >= wickRatio * body and close < open
-engulfBull = useEngulf and close[1] < open[1] and close > open and close >= open[1] and open <= close[1]
-engulfBear = useEngulf and close[1] > open[1] and close < open and close <= open[1] and open >= close[1]
+engBull    = useEngulf and close[1] < open[1] and close > open and close >= open[1] and open <= close[1]
+engBear    = useEngulf and close[1] > open[1] and close < open and close <= open[1] and open >= close[1]
 
-// CHoCH : cloture au-dela du dernier pivot oppose CONFIRME (decale de 2).
 ph = ta.pivothigh(high, 2, 2)
 pl = ta.pivotlow(low, 2, 2)
 var float lastPH = na
@@ -181,143 +209,250 @@ lastPL := not na(pl) ? pl : lastPL
 chochBull = useChoch and not na(lastPH) and close > lastPH
 chochBear = useChoch and not na(lastPL) and close < lastPL
 
-confBull = wickBull or engulfBull or chochBull
-confBear = wickBear or engulfBear or chochBear
+confBull = wickBull or engBull or chochBull
+confBear = wickBear or engBear or chochBear
+nameOf(bool w, bool e, bool c) => w ? "Meche de rejet" : e ? "Englobante" : c ? "CHoCH" : ""
 
-confName(bool w, bool e, bool c) =>
-    w ? "Meche" : e ? "Englobante" : c ? "CHoCH" : ""
-
-// ------------------------------------------------------------- SIGNAUX ---
+// -------------------------------------------------------------- SIGNAUX ---
 var float eEntry = na
 var float eStop  = na
 var float eTp1   = na
 var float eTp2   = na
+var float eRisk  = na
 var int   eDir   = 0
-var bool  eHitTp1 = false
+var bool  eTp1Hit = false
 var string eConf = ""
-var line lEntry = na, var line lStop = na, var line lTp1 = na, var line lTp2 = na
-
-inZone(OB o) => low <= o.top and high >= o.bot
+var string eKind = ""
+var line lE = na, var line lS = na, var line lT1 = na, var line lT2 = na
 
 newSignal = false
-if barstate.isconfirmed and eDir == 0 and inKZ and strongEnough and array.size(obs) > 0
+if barstate.isconfirmed and eDir == 0 and inKZ and trendOk and array.size(obs) > 0
     for i = 0 to array.size(obs) - 1
         o = array.get(obs, i)
-        if not o.used and o.dir == bias and inZone(o)
-            ok = bias > 0 ? confBull : confBear
+        dirOk  = not useTrend or o.dir == tradeBias
+        plusOk = not onlyPlus or o.plus
+        inside = low <= o.top and high >= o.bot
+        if not o.used and dirOk and plusOk and inside
+            ok = o.dir > 0 ? confBull : confBear
             if ok
-                eDir   := bias
-                eEntry := close
-                eStop  := bias > 0 ? o.bot - bufATR * atr : o.top + bufATR * atr
-                r      = math.abs(eEntry - eStop)
-                eTp1   := eEntry + bias * tp1R * r
-                eTp2   := eEntry + bias * tp2R * r
-                eHitTp1 := false
-                eConf  := bias > 0 ? confName(wickBull, engulfBull, chochBull)
-                                   : confName(wickBear, engulfBear, chochBear)
-                o.used := true
+                eDir    := o.dir
+                eEntry  := close
+                eStop   := o.dir > 0 ? o.bot - bufATR * atr : o.top + bufATR * atr
+                eRisk   := math.abs(eEntry - eStop)
+                eTp1    := eEntry + o.dir * tp1R * eRisk
+                eTp2    := eEntry + o.dir * tp2R * eRisk
+                eTp1Hit := false
+                eConf   := o.dir > 0 ? nameOf(wickBull, engBull, chochBull)
+                                     : nameOf(wickBear, engBear, chochBear)
+                eKind   := o.plus ? "OB+" : "OB"
+                o.used  := true
                 newSignal := true
                 break
 
-// suivi de la position
+var string eStat = "EN ATTENTE"
 if eDir != 0
-    hitStop = eDir > 0 ? low <= eStop : high >= eStop
-    hitTp1  = eDir > 0 ? high >= eTp1 : low  <= eTp1
-    hitTp2  = eDir > 0 ? high >= eTp2 : low  <= eTp2
-    if hitStop
+    hitS = eDir > 0 ? low  <= eStop : high >= eStop
+    hitT1= eDir > 0 ? high >= eTp1  : low  <= eTp1
+    hitT2= eDir > 0 ? high >= eTp2  : low  <= eTp2
+    if hitS
+        eStat := eTp1Hit ? "SORTI A L'EQUILIBRE" : "STOP TOUCHE"
         eDir := 0
     else
-        if hitTp1 and not eHitTp1
-            eHitTp1 := true
+        if hitT1 and not eTp1Hit
+            eTp1Hit := true
+            eStat := "TP1 PRIS"
             if beAfter
                 eStop := eEntry
-        if hitTp2
+        if hitT2
+            eStat := "TP2 ATTEINT"
             eDir := 0
+        else if not eTp1Hit
+            eStat := "EN COURS"
 
-// trace du scenario une fois VALIDE par le marche
+pnlR = eDir != 0 and not na(eRisk) and eRisk > 0
+     ? (close - eEntry) * eDir / eRisk : na
+
 if showTrade and newSignal
-    line.delete(lEntry), line.delete(lStop), line.delete(lTp1), line.delete(lTp2)
-    lEntry := line.new(bar_index, eEntry, bar_index + 40, eEntry,
-         color = color.white, width = 2, style = line.style_solid)
-    lStop  := line.new(bar_index, eStop,  bar_index + 40, eStop,
-         color = color.red, width = 2)
-    lTp1   := line.new(bar_index, eTp1,   bar_index + 40, eTp1,
-         color = color.orange, width = 1, style = line.style_dashed)
-    lTp2   := line.new(bar_index, eTp2,   bar_index + 40, eTp2,
-         color = color.lime, width = 2)
+    line.delete(lE), line.delete(lS), line.delete(lT1), line.delete(lT2)
+    lE  := line.new(bar_index, eEntry, bar_index + 60, eEntry, color = color.white, width = 2)
+    lS  := line.new(bar_index, eStop,  bar_index + 60, eStop,  color = #f23645, width = 2)
+    lT1 := line.new(bar_index, eTp1,   bar_index + 60, eTp1,   color = #ff9800, width = 1,
+         style = line.style_dashed)
+    lT2 := line.new(bar_index, eTp2,   bar_index + 60, eTp2,   color = #089981, width = 2)
     label.new(bar_index, eDir > 0 ? eStop : eTp2,
-         (eDir > 0 ? "ACHAT " : "VENTE ") + str.tostring(eEntry, format.mintick) +
-         "\nSL " + str.tostring(eStop, format.mintick) +
-         "\nTP1 " + str.tostring(eTp1, format.mintick) +
-         "\nTP2 " + str.tostring(eTp2, format.mintick) +
-         "\n" + eConf,
+         (eDir > 0 ? "ACHAT " : "VENTE ") + eKind + "\n" + eConf +
+         "\nEntree " + str.tostring(eEntry, format.mintick) +
+         "\nSL "     + str.tostring(eStop,  format.mintick) +
+         "\nTP1 "    + str.tostring(eTp1,   format.mintick) +
+         "\nTP2 "    + str.tostring(eTp2,   format.mintick),
          style = eDir > 0 ? label.style_label_up : label.style_label_down,
-         color = eDir > 0 ? color.new(#089981, 15) : color.new(#f23645, 15),
+         color = eDir > 0 ? color.new(#089981, 10) : color.new(#f23645, 10),
          textcolor = color.white, size = size.small)
 
-plotshape(newSignal and eDir > 0, "Achat", shape.triangleup,
-     location.belowbar, color.new(#089981, 0), size = size.small)
-plotshape(newSignal and eDir < 0, "Vente", shape.triangledown,
-     location.abovebar, color.new(#f23645, 0), size = size.small)
+plotshape(newSignal and eDir > 0, "Achat", shape.triangleup, location.belowbar,
+     #089981, size = size.small)
+plotshape(newSignal and eDir < 0, "Vente", shape.triangledown, location.abovebar,
+     #f23645, size = size.small)
 
-// ---------------------------------------------------- TABLEAU MULTI-UT ---
-scan(string tf) =>
-    [d, f] = request.security(syminfo.tickerid, tf, trendExpr(),
-         lookahead = barmerge.lookahead_off)
-    [d, f]
+// ----------------------------------------- SCAN DES OB PAR UNITE DE TEMPS --
+// Renvoie, pour l'unite demandee : direction de tendance, dernier OB achat
+// et dernier OB vente encore valides, avec leur qualite (imbalance ou non).
+obScan() =>
+    var float bT = na, var float bB = na, var bool bP = false
+    var float sT = na, var float sB = na, var bool sP = false
+    a  = ta.atr(200)
+    m  = close - open[impBars - 1]
+    dd = m > 0 ? 1 : m < 0 ? -1 : 0
+    if not na(a) and a > 0 and dd != 0 and math.abs(m) >= impATR * a
+        idx = -1
+        for j = impBars to impBars + 10
+            if j < bar_index and idx == -1
+                if (dd > 0 ? close[j] < open[j] : close[j] > open[j])
+                    idx := j
+        if idx > 0
+            t = math.max(math.max(open[idx], close[idx]), high[idx])
+            b = math.min(math.min(open[idx], close[idx]), low[idx])
+            p = idx >= 2 ? (dd > 0 ? low[idx - 2] > high[idx]
+                                   : high[idx - 2] < low[idx]) : false
+            if dd > 0
+                bT := t, bB := b, bP := p
+            else
+                sT := t, sB := b, sP := p
+    if not na(bB) and close < bB
+        bT := na, bB := na, bP := false
+    if not na(sT) and close > sT
+        sT := na, sB := na, sP := false
+    ef = ta.ema(close, emaFast)
+    es = ta.ema(close, emaSlow)
+    td = ef > es ? 1 : ef < es ? -1 : 0
+    [td, bT, bB, bP, sT, sB, sP]
 
-// Les appels multi-unites sont evalues a CHAQUE bougie, hors de tout bloc
-// conditionnel. Place dans un "if", request.security peut renvoyer des
-// valeurs incoherentes selon les bougies ou le bloc n'est pas execute.
-[d5,   f5]   = scan("5")
-[d15,  f15]  = scan("15")
-[d60,  f60]  = scan("60")
-[d240, f240] = scan("240")
-[dD,   fD]   = scan("D")
+// Appels evalues a CHAQUE bougie, hors de tout bloc conditionnel.
+[t5,  b5t,  b5b,  b5p,  s5t,  s5b,  s5p ] = request.security(syminfo.tickerid, "5",   obScan(), lookahead = barmerge.lookahead_off)
+[t15, b15t, b15b, b15p, s15t, s15b, s15p] = request.security(syminfo.tickerid, "15",  obScan(), lookahead = barmerge.lookahead_off)
+[t60, b60t, b60b, b60p, s60t, s60b, s60p] = request.security(syminfo.tickerid, "60",  obScan(), lookahead = barmerge.lookahead_off)
+[t240,b240t,b240b,b240p,s240t,s240b,s240p]= request.security(syminfo.tickerid, "240", obScan(), lookahead = barmerge.lookahead_off)
+[tD,  bDt,  bDb,  bDp,  sDt,  sDb,  sDp ] = request.security(syminfo.tickerid, "D",   obScan(), lookahead = barmerge.lookahead_off)
 
+zone(float t, float b) =>
+    na(t) or na(b) ? "—"
+     : str.tostring(t, format.mintick) + "\n" + str.tostring(b, format.mintick) +
+       "  (" + str.tostring(math.abs(close - (t + b) / 2) / close * 100, "#.00") + "%)"
+
+// ------------------------------------------------------------- TABLEAU ----
 var table tb = na
 if showTable and barstate.islast
     table.delete(tb)
-    tb := table.new(position.bottom_right, 4, 7,
-         bgcolor = color.new(#131722, 10), border_width = 1,
-         border_color = color.new(color.gray, 60), frame_width = 1,
-         frame_color = color.new(color.gray, 40))
-    table.cell(tb, 0, 0, "UT",      text_color = color.silver, text_size = size.small)
-    table.cell(tb, 1, 0, "Tendance",text_color = color.silver, text_size = size.small)
-    table.cell(tb, 2, 0, "Force",   text_color = color.silver, text_size = size.small)
-    table.cell(tb, 3, 0, "Valide",  text_color = color.silver, text_size = size.small)
+    tb := table.new(position.bottom_right, 6, 13, bgcolor = color.new(#131722, 5),
+         border_width = 1, border_color = color.new(color.gray, 70),
+         frame_width = 1, frame_color = color.new(#2962ff, 50))
 
-    dirs = array.from(d5, d15, d60, d240, dD)
-    frcs = array.from(f5, f15, f60, f240, fD)
-    lbl  = array.from("M5", "M15", "H1", "H4", "D")
-    for i = 0 to array.size(lbl) - 1
-        d = array.get(dirs, i)
-        f = array.get(frcs, i)
-        up = d > 0
-        table.cell(tb, 0, i + 1, array.get(lbl, i),
-             text_color = color.white, text_size = size.small)
-        table.cell(tb, 1, i + 1, up ? "HAUSSE" : d < 0 ? "BAISSE" : "-",
-             text_color = up ? #089981 : d < 0 ? #f23645 : color.gray,
-             text_size = size.small)
-        table.cell(tb, 2, i + 1, str.tostring(f, "#.00"),
-             text_color = f >= minForce ? color.white : color.gray,
-             text_size = size.small)
-        table.cell(tb, 3, i + 1, f >= minForce ? "OUI" : "non",
-             text_color = f >= minForce ? #089981 : color.gray,
-             text_size = size.small)
+    hdr = color.new(#1e222d, 0)
+    table.cell(tb, 0, 0, "SCANNER MULTI-UNITES", text_color = #2962ff,
+         text_size = size.normal, bgcolor = hdr)
+    table.merge_cells(tb, 0, 0, 5, 0)
 
-    st = eDir != 0 ? (eDir > 0 ? "ACHAT EN COURS" : "VENTE EN COURS")
-         : array.size(obs) > 0 ? "ZONES ACTIVES : " + str.tostring(array.size(obs))
-         : "AUCUNE ZONE"
-    table.cell(tb, 0, 6, st, text_color = color.yellow, text_size = size.small)
-    table.cell(tb, 1, 6, eDir != 0 ? str.tostring(eEntry, format.mintick) : "-",
+    table.cell(tb, 0, 1, "UT",        text_color = color.silver, text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 1, 1, "Tendance",  text_color = color.silver, text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 2, 1, "OB Achat",  text_color = #089981,      text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 3, 1, "Qual.",     text_color = color.silver, text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 4, 1, "OB Vente",  text_color = #f23645,      text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 5, 1, "Qual.",     text_color = color.silver, text_size = size.small, bgcolor = hdr)
+
+    lbls = array.from("M5", "M15", "H1", "H4", "D")
+    tds  = array.from(t5, t15, t60, t240, tD)
+    bts  = array.from(b5t, b15t, b60t, b240t, bDt)
+    bbs  = array.from(b5b, b15b, b60b, b240b, bDb)
+    bps  = array.from(b5p, b15p, b60p, b240p, bDp)
+    sts  = array.from(s5t, s15t, s60t, s240t, sDt)
+    sbs  = array.from(s5b, s15b, s60b, s240b, sDb)
+    sps  = array.from(s5p, s15p, s60p, s240p, sDp)
+
+    for i = 0 to 4
+        r  = i + 2
+        td = array.get(tds, i)
+        table.cell(tb, 0, r, array.get(lbls, i), text_color = color.white, text_size = size.small)
+        table.cell(tb, 1, r, td > 0 ? "HAUSSIER ▲" : td < 0 ? "BAISSIER ▼" : "—",
+             text_color = td > 0 ? #089981 : td < 0 ? #f23645 : color.gray, text_size = size.small)
+        table.cell(tb, 2, r, zone(array.get(bts, i), array.get(bbs, i)),
+             text_color = na(array.get(bts, i)) ? color.gray : #089981, text_size = size.tiny)
+        table.cell(tb, 3, r, na(array.get(bts, i)) ? "" : (array.get(bps, i) ? "★ OB+" : "OB"),
+             text_color = array.get(bps, i) ? color.yellow : color.silver, text_size = size.tiny)
+        table.cell(tb, 4, r, zone(array.get(sts, i), array.get(sbs, i)),
+             text_color = na(array.get(sts, i)) ? color.gray : #f23645, text_size = size.tiny)
+        table.cell(tb, 5, r, na(array.get(sts, i)) ? "" : (array.get(sps, i) ? "★ OB+" : "OB"),
+             text_color = array.get(sps, i) ? color.yellow : color.silver, text_size = size.tiny)
+
+    // --- consensus des unites de temps ---
+    sumT = (t5 > 0 ? 1 : t5 < 0 ? -1 : 0) + (t15 > 0 ? 1 : t15 < 0 ? -1 : 0) +
+           (t60 > 0 ? 1 : t60 < 0 ? -1 : 0) + (t240 > 0 ? 1 : t240 < 0 ? -1 : 0) +
+           (tD > 0 ? 1 : tD < 0 ? -1 : 0)
+    table.cell(tb, 0, 7, "CONSENSUS", text_color = color.silver, text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 1, 7, sumT >= 2 ? "ACHAT" : sumT <= -2 ? "VENTE" : "NEUTRE",
+         text_color = sumT >= 2 ? #089981 : sumT <= -2 ? #f23645 : color.gray,
+         text_size = size.small, bgcolor = hdr)
+    table.cell(tb, 2, 7, "Force H1 " + str.tostring(htfForce, "#.00"),
+         text_color = htfForce >= minForce ? color.white : color.gray,
+         text_size = size.tiny, bgcolor = hdr)
+    table.cell(tb, 3, 7, htfForce >= minForce ? "NETTE" : "faible",
+         text_color = htfForce >= minForce ? #089981 : color.gray,
+         text_size = size.tiny, bgcolor = hdr)
+    table.cell(tb, 4, 7, inKZ ? "SEANCE OK" : "HORS SEANCE",
+         text_color = inKZ ? #089981 : color.gray, text_size = size.tiny, bgcolor = hdr)
+    table.cell(tb, 5, 7, trendOk and inKZ ? "PRET" : "ATTENTE",
+         text_color = trendOk and inKZ ? color.yellow : color.gray,
+         text_size = size.tiny, bgcolor = hdr)
+
+    // --- position en cours ---
+    table.cell(tb, 0, 8, "POSITION", text_color = #2962ff, text_size = size.normal, bgcolor = hdr)
+    table.merge_cells(tb, 0, 8, 5, 8)
+
+    hasPos = eDir != 0
+    table.cell(tb, 0, 9, "Sens",  text_color = color.silver, text_size = size.small)
+    table.cell(tb, 1, 9, hasPos ? (eDir > 0 ? "ACHAT" : "VENTE") : "—",
+         text_color = hasPos ? (eDir > 0 ? #089981 : #f23645) : color.gray, text_size = size.small)
+    table.cell(tb, 2, 9, "Entree", text_color = color.silver, text_size = size.small)
+    table.cell(tb, 3, 9, hasPos ? str.tostring(eEntry, format.mintick) : "—",
          text_color = color.white, text_size = size.small)
-    table.cell(tb, 2, 6, eDir != 0 ? "SL " + str.tostring(eStop, format.mintick) : "-",
-         text_color = color.red, text_size = size.small)
-    table.cell(tb, 3, 6, eHitTp1 ? "TP1 pris" : "-",
-         text_color = color.orange, text_size = size.small)
+    table.cell(tb, 4, 9, "Type",  text_color = color.silver, text_size = size.small)
+    table.cell(tb, 5, 9, hasPos ? eKind : "—", text_color = color.yellow, text_size = size.small)
 
-// -------------------------------------------------------------- ALERTES --
+    table.cell(tb, 0, 10, "SL",   text_color = color.silver, text_size = size.small)
+    table.cell(tb, 1, 10, hasPos ? str.tostring(eStop, format.mintick) : "—",
+         text_color = #f23645, text_size = size.small)
+    table.cell(tb, 2, 10, "TP1",  text_color = color.silver, text_size = size.small)
+    table.cell(tb, 3, 10, hasPos ? str.tostring(eTp1, format.mintick) : "—",
+         text_color = #ff9800, text_size = size.small)
+    table.cell(tb, 4, 10, "TP2",  text_color = color.silver, text_size = size.small)
+    table.cell(tb, 5, 10, hasPos ? str.tostring(eTp2, format.mintick) : "—",
+         text_color = #089981, text_size = size.small)
+
+    table.cell(tb, 0, 11, "Statut", text_color = color.silver, text_size = size.small)
+    table.cell(tb, 1, 11, eStat, text_color = color.yellow, text_size = size.small)
+    table.merge_cells(tb, 1, 11, 2, 11)
+    table.cell(tb, 3, 11, "PnL", text_color = color.silver, text_size = size.small)
+    table.cell(tb, 4, 11, na(pnlR) ? "—" : str.tostring(pnlR, "#.00") + " R",
+         text_color = na(pnlR) ? color.gray : pnlR >= 0 ? #089981 : #f23645,
+         text_size = size.small)
+    table.cell(tb, 5, 11, hasPos ? (eTp1Hit ? "TP1 ✓" : "") : "",
+         text_color = #ff9800, text_size = size.small)
+
+    // --- zones actives ---
+    nB = 0, nS = 0
+    if array.size(obs) > 0
+        for i = 0 to array.size(obs) - 1
+            o = array.get(obs, i)
+            if o.dir > 0
+                nB += 1
+            else
+                nS += 1
+    table.cell(tb, 0, 12, "Zones actives", text_color = color.silver, text_size = size.tiny)
+    table.cell(tb, 1, 12, str.tostring(nB) + " achat", text_color = #089981, text_size = size.tiny)
+    table.cell(tb, 2, 12, str.tostring(nS) + " vente", text_color = #f23645, text_size = size.tiny)
+    table.cell(tb, 3, 12, "★ = avec imbalance", text_color = color.yellow, text_size = size.tiny)
+    table.merge_cells(tb, 3, 12, 5, 12)
+
+// -------------------------------------------------------------- ALERTES ---
 alertcondition(newSignal and eDir > 0, "Signal ACHAT",
      "Order Block haussier confirme sur {{ticker}} {{interval}}")
 alertcondition(newSignal and eDir < 0, "Signal VENTE",
