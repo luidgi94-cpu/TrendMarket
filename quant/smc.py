@@ -220,8 +220,14 @@ def backtest_smc(m15: pd.DataFrame, cfg: SMCConfig,
             rej["limite_non_touchee"] += 1; i = mss_at + 1; continue
 
         # ---------- simulation ---------------------------------------------
+        # Sur la bougie de remplissage on ne teste QUE le stop, jamais la
+        # cible : son extreme favorable peut avoir precede le fill, et le
+        # compter comme un gain est un lookahead intra-bougie.
         exit_reason, r_mult = "fin_fenetre", 0.0
-        for j in range(fill_at, min(fill_at + 96, n)):
+        if (l[fill_at] <= stop_px) if raid_dir > 0 else (h[fill_at] >= stop_px):
+            exit_reason, r_mult = "stop", -1.0
+        else:
+          for j in range(fill_at + 1, min(fill_at + 96, n)):
             hit_stop = (l[j] <= stop_px) if raid_dir > 0 else (h[j] >= stop_px)
             hit_tp = (h[j] >= target_px) if raid_dir > 0 else (l[j] <= target_px)
             # hypothese conservatrice : stop prioritaire dans la meme bougie
@@ -229,7 +235,7 @@ def backtest_smc(m15: pd.DataFrame, cfg: SMCConfig,
                 exit_reason, r_mult = "stop", -1.0; break
             if hit_tp:
                 exit_reason, r_mult = "cible", rr; break
-        else:
+          else:
             r_mult = (c[min(fill_at + 95, n - 1)] - entry_px) * raid_dir / risk
 
         gross = r_mult * risk * cfg.units
