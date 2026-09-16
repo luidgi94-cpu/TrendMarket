@@ -172,10 +172,17 @@ if barstate.isconfirmed and impulseStart
         // Zone = CORPS de la bougie par defaut. Inclure les meches epaissit
         // la zone d'un facteur deux a trois, ce qui eloigne d'autant le stop
         // place a son extremite et degrade le cout par unite de risque.
-        t = useBody ? math.max(open[obIdx], close[obIdx])
-                    : math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
-        b = useBody ? math.min(open[obIdx], close[obIdx])
-                    : math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
+        // Ecrit en if/else plutot qu'en ternaire sur deux lignes : Pine
+        // refuse une ligne de continuation indentee d'un multiple de 4
+        // espaces, qu'il interprete comme un nouveau bloc.
+        float t = na
+        float b = na
+        if useBody
+            t := math.max(open[obIdx], close[obIdx])
+            b := math.min(open[obIdx], close[obIdx])
+        else
+            t := math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
+            b := math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
         // Une bougie de news donne une zone trop epaisse pour etre tradable.
         tooTall = maxZoneATR > 0 and (t - b) > maxZoneATR * atr
         if (showSimple or isPlus) and not tooTall
@@ -392,10 +399,14 @@ obScan() =>
         if idx > 0
             srcBar = bar_index - idx
             already = dd > 0 ? srcBar == lastBullBar : srcBar == lastBearBar
-            t = useBody ? math.max(open[idx], close[idx])
-                        : math.max(math.max(open[idx], close[idx]), high[idx])
-            b = useBody ? math.min(open[idx], close[idx])
-                        : math.min(math.min(open[idx], close[idx]), low[idx])
+            float t = na
+            float b = na
+            if useBody
+                t := math.max(open[idx], close[idx])
+                b := math.min(open[idx], close[idx])
+            else
+                t := math.max(math.max(open[idx], close[idx]), high[idx])
+                b := math.min(math.min(open[idx], close[idx]), low[idx])
             tall = maxZoneATR > 0 and (t - b) > maxZoneATR * a
             if not already and not tall
                 p = idx >= 2 ? (dd > 0 ? low[idx - 2] > high[idx]
