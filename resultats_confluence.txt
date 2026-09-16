@@ -1,0 +1,26 @@
+588,732 bougies M1 | 436 jours
+seuil de force 0.8, sans prise partielle
+tolerance de contact : 2.05 USD de chaque cote de la zone
+
+Donnees reelles...
+Temoins (4, confluence recalculee a l'identique)...
+fait.
+
+  groupe     n      WR      R reel   temoin    ecart      t
+  ----------------------------------------------------------
+  aucune    1399   38.7%  +0.309  +0.198  +0.111   +2.34
+  H1         662   41.5%  +0.366  +0.262  +0.104   +1.50  <- confluence
+  H4         164   34.1%  +0.182  +0.115  +0.066   +0.49  <- confluence
+  H1+H4      286   41.6%  +0.404  +0.503  -0.099   -0.94  <- confluence
+  tout      2511   39.5%  +0.327  +0.240  +0.087   +2.44
+
+LECTURE
+  Pour que l'hypothese tienne, il ne suffit pas que les groupes en
+  confluence affichent un R eleve : il faut que leur ECART au
+  temoin depasse celui du groupe 'aucune'. Un R plus haut avec le
+  meme ecart signifie seulement que la confluence selectionne des
+  moments plus volatils, ce que le hasard exploite tout autant.
+
+  Ecart du groupe sans confluence : +0.111 R
+  AUCUN groupe en confluence ne fait mieux.
+  -> l'hypothese n'est pas soutenue par ces donnees.
