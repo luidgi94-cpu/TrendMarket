@@ -111,6 +111,11 @@ bufATR = input.float(0.15, "Marge au-dela de l'OB (x ATR)", step = 0.05, group =
 tp1R   = input.float(1.0,  "TP1 (en R)", step = 0.1,                 group = gR)
 tp2R   = input.float(3.0,  "TP2 (en R)", step = 0.1,                 group = gR)
 beAfter= input.bool(true,  "Stop a l'equilibre apres TP1",           group = gR)
+maxHold= input.int(48,     "Duree max d'un suivi (bougies)", minval = 5, group = gR,
+     tooltip = "Le backtest ferme au bout de 240 minutes, soit 48 bougies " +
+               "M5. Sans cette limite le scanner reste bloque sur un trade " +
+               "qui n'atteint jamais son stop ni sa cible, et plus aucun " +
+               "signal n'apparait.")
 
 gV = "5. Affichage"
 showOB    = input.bool(true, "Zones Order Block",                    group = gV)
@@ -312,6 +317,7 @@ var bool  eTp1Hit = false
 var string eConf = ""
 var string eKind = ""
 var string eStat = "EN ATTENTE"
+var int    eBar  = na
 var line lE = na
 var line lS = na
 var line lT1 = na
@@ -340,6 +346,7 @@ if barstate.isconfirmed and eDir == 0 and inKZ and trendOk and array.size(obs) >
                                          : nameOf(wickBear, engBear, chochBear)
                     eKind   := o.plus ? "OB+" : "OB"
                     eStat   := "EN COURS"
+                    eBar    := bar_index
                     o.used  := true
                     newSignal := true
 
@@ -359,6 +366,11 @@ if eDir != 0 and not newSignal
         if hitT2
             eStat := "TP2 ATTEINT"
             eDir  := 0
+    // Sortie au temps : sans elle, un suivi qui n'atteint ni son stop ni sa
+    // cible bloque le scanner indefiniment et aucun signal ne reapparait.
+    if eDir != 0 and not na(eBar) and bar_index - eBar >= maxHold
+        eStat := "CLOS SUR DUREE"
+        eDir  := 0
 
 pnlR = eDir != 0 and not na(eRisk) and eRisk > 0
      ? (close - eEntry) * eDir / eRisk : na
