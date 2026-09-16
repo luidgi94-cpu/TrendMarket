@@ -39,6 +39,19 @@ class MTFConfig:
     impulse_bars: int = 5             # en bougies M5
     impulse_atr: float = 0.8
 
+    # Mode de detection de l'Order Block.
+    #   "fenetre"  : recherche dans une fenetre fixe situee cinq a quinze
+    #                bougies en arriere. C'est la version qui a produit les
+    #                resultats publies, zone prise meches comprises.
+    #   "remontee" : on part de la bougie courante et l'on remonte jusqu'a
+    #                la premiere bougie de couleur opposee, en exigeant que
+    #                l'impulsion ait depasse cette bougie. Definition
+    #                litterale, zone prise au corps.
+    ob_mode: str = "fenetre"
+    ob_lookback: int = 20
+    min_leg_bars: int = 2
+    use_body: bool = False
+
     confirm_tf: str = "1min"          # "1min" | "3min" | "5min"
     confirm_bars: int = 30            # fenetre de confirmation, en bougies M1
     poi_valid_bars: int = 48          # duree de vie de l'OB, en bougies M5
@@ -137,11 +150,29 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
             i += 1; continue
 
         ob = -1
-        for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
-            if (c5[j] < o5[j]) if d > 0 else (c5[j] > o5[j]):
-                ob = j; break
+        if cfg.ob_mode == "remontee":
+            # Definition litterale : premiere bougie de couleur opposee en
+            # remontant depuis la bougie courante.
+            for j in range(i - 1, max(i - cfg.ob_lookback, 1), -1):
+                if (c5[j] < o5[j]) if d > 0 else (c5[j] > o5[j]):
+                    ob = j; break
+            if ob >= 0:
+                # L'impulsion doit avoir DEPASSE l'Order Block, sans quoi il
+                # s'agit d'une oscillation interne a une consolidation.
+                broke = (c5[i] > h5[ob]) if d > 0 else (c5[i] < l5[ob])
+                amp = abs(c5[i] - (l5[ob] if d > 0 else h5[ob]))
+                if (i - ob - 1) < cfg.min_leg_bars or not broke \
+                        or amp < cfg.impulse_atr * atr5[i]:
+                    ob = -1
+        else:
+            for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
+                if (c5[j] < o5[j]) if d > 0 else (c5[j] > o5[j]):
+                    ob = j; break
         if ob < 0: rej["pas_dOB"] += 1; i += 1; continue
-        ob_lo = min(o5[ob], c5[ob], l5[ob]); ob_hi = max(o5[ob], c5[ob], h5[ob])
+        if cfg.use_body:
+            ob_lo = min(o5[ob], c5[ob]); ob_hi = max(o5[ob], c5[ob])
+        else:
+            ob_lo = min(o5[ob], c5[ob], l5[ob]); ob_hi = max(o5[ob], c5[ob], h5[ob])
 
         # --- retour dans la zone, surveille en M1 --------------------------
         start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
