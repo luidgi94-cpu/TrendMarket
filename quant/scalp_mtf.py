@@ -181,6 +181,17 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         else:
             ob_lo = min(o5[ob], c5[ob], l5[ob]); ob_hi = max(o5[ob], c5[ob], h5[ob])
 
+        # Imbalance ANCREE sur l'Order Block : la troisieme bougie du
+        # mouvement ne revient pas combler l'extremite de l'OB. C'est la
+        # definition retenue par l'utilisateur, et celle que l'indicateur
+        # utilise pour distinguer OB+ et OB simple.
+        # Elle est ENREGISTREE et non filtree : le but est de mesurer si la
+        # distinction porte de l'information, pas de la supposer.
+        ob_plus = False
+        if ob + 2 < n5:
+            ob_plus = bool((l5[ob + 2] > h5[ob]) if d > 0
+                           else (h5[ob + 2] < l5[ob]))
+
         # --- retour dans la zone, surveille en M1 --------------------------
         start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
         end = min(start + cfg.poi_valid_bars * 5, n1)
@@ -238,6 +249,7 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         trades.append({"entry_ts": i1[entry_at], "date": day,
                        "direction": "long" if d > 0 else "short",
                        "confirmation": kind, "stop_dist": risk,
+                       "ob_plus": ob_plus,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
                        "exit": why, "equity": equity})
         if equity < 50: break
