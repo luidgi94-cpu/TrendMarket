@@ -1,0 +1,52 @@
+588,732 bougies M1 | 436 jours
+
+Construction de 5 temoins (echantillon complet)...
+fait.
+
+TEST 1 - l'effet du retrait du partiel, seuil par seuil
+  Si l'effet est reel, la colonne 'sans' doit dominer la colonne
+  'avec' PARTOUT, pas seulement au seuil qui a ete pioche.
+
+  seuil |    avec partiel     |    SANS partiel     |  gain
+        |  ecart      t    WR |  ecart      t    WR |
+  --------------------------------------------------------------
+  0.0   | +0.005   0.30  60.5% | +0.036   1.33  37.5% | +0.031
+  0.4   | +0.016   0.76  60.7% | +0.038   1.28  38.1% | +0.023
+  0.6   | +0.004   0.17  60.4% | +0.015   0.46  37.6% | +0.011
+  0.8   | +0.029   1.20  60.9% | +0.083   2.35  39.5% | +0.054
+  1.0   | -0.002  -0.08  59.8% | +0.090   2.37  38.6% | +0.093
+  1.2   | -0.020  -0.71  59.8% | +0.079   1.90  38.5% | +0.099
+  1.5   | -0.037  -1.13  61.0% | +0.053   1.11  38.3% | +0.090
+  2.0   | -0.020  -0.41  63.3% | -0.078  -1.10  38.6% | -0.058
+  2.5   | -0.062  -0.90  63.6% | -0.185  -1.83  36.4% | -0.123
+
+  Le retrait du partiel ameliore l'ecart sur 7/9 seuils.
+  Gain median +0.031 R, minimum -0.123, maximum +0.099.
+  -> effet MAJORITAIRE mais pas universel. A confirmer.
+
+
+TEST 2 - hors echantillon temporel (coupure 2025-11-07)
+  apprentissage 216 jours | validation 221 jours
+  Construction des temoins par moitie...
+  fait.
+
+  APPRENTISSAGE (on choisit le seuil ici, sans partiel)
+    seuil 0.0   ecart +0.082  t  2.03  n  2057  <-
+    seuil 0.4   ecart +0.041  t  0.96  n  1757
+    seuil 0.6   ecart +0.012  t  0.27  n  1539
+    seuil 0.8   ecart +0.024  t  0.47  n  1303
+    seuil 1.0   ecart +0.013  t  0.23  n  1076
+    seuil 1.2   ecart +0.015  t  0.25  n   918
+    seuil 1.5   ecart -0.037  t -0.56  n   692
+    seuil 2.0   ecart -0.132  t -1.40  n   324
+    seuil 2.5   ecart -0.104  t -0.74  n   151
+
+  Seuil retenu sur l'apprentissage : 0.0
+
+  VALIDATION (seconde moitie, jamais vue)
+    seuil 0.0 : 2127 trades  WR 33.9%  R +0.151  ecart -0.162  t -4.37
+
+  VERDICT
+    L'edge DISPARAIT hors echantillon. Le reglage capturait la
+    forme de la premiere moitie, pas une propriete du marche.
+    Conclusion : pas d'edge exploitable. Ne pas trader.

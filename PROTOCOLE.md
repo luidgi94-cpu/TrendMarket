@@ -1,3 +1,64 @@
+# CONCLUSION : SYSTEME ABANDONNE
+
+**16 septembre 2026.** Le systeme decrit dans ce document N'A PAS d'edge
+exploitable. Aucun capital ne doit y etre engage. Ce qui suit est conserve
+comme trace de la demarche, pas comme plan de trading.
+
+## Ce qui a tranche
+
+Hors echantillon temporel, seuil choisi sur les 216 premiers jours puis
+mesure sur les 221 suivants, jamais vus :
+
+    APPRENTISSAGE  ecart +0.082 R  t +2.03  (2 057 trades)
+    VALIDATION     ecart -0.162 R  t -4.37  (2 127 trades)
+
+L'edge ne s'evanouit pas, il s'inverse. Le resultat hors echantillon est
+significativement NEGATIF : le systeme fait moins bien que des bougies
+melangees au hasard, et l'ecart est solide. Signature classique du
+surajustement : le reglage capturait la forme de la premiere moitie.
+
+## Ce qui a ete teste avant d'en arriver la
+
+Neuf seuils de force de tendance, quatre variantes de gestion, vingt-quatre
+heures de la journee, avec et sans prise partielle, avec et sans filtre de
+largeur de stop. Chaque configuration contre un temoin construit en
+melangeant les bougies M1 a l'interieur de chaque heure.
+
+Aucune combinaison ne tient hors echantillon.
+
+## Ce que les donnees ont invalide, au passage
+
+Sur 588 732 minutes de XAUUSD du courtier de l'utilisateur :
+
+- **Le winrate ne mesure rien.** Environ 60% sur toutes les configurations,
+  y compris celles dont l'ecart au temoin est negatif.
+- **Les killzones de Londres et New York n'apportent rien.** R moyen
+  +0.379 dans la plage horaire, +0.374 en dehors.
+- **La fraicheur de l'Order Block n'a aucun effet**, contrairement a la
+  doctrine.
+- **Le volume tick n'apporte rien** : quartiles non monotones. Il mesure
+  le nombre de changements de prix, pas un flux d'ordres signe.
+
+## Le mur structurel
+
+A 450 USD avec un lot minimum de 0.01, le cout vaut 0.044 R par trade et
+le risque 1.26% du capital. Il faudrait un edge stable d'au moins 0.10 R
+pour que l'operation ait un sens. Le meilleur candidat mesure 0.03 et
+s'inverse hors echantillon.
+
+## L'erreur commise en cours de route, a ne pas reproduire
+
+Trois mesures contradictoires ont ete produites sur ce systeme : +0.027 R
+avec p = 0.43, +0.147 R avec p = 0.098 sur 89 jours, et +0.124 R avec
+p = 0.0001. La plus flatteuse a ete retenue et portee dans l'en-tete des
+scripts sans reconcilier les autres.
+
+Quand deux mesures se contredisent, ce n'est pas la meilleure qui est
+vraie : c'est que l'on ne sait pas. Et tant que l'on ne sait pas, on ne
+trade pas.
+
+---
+
 # Protocole d'execution
 
 Fige le 16 septembre 2026, avant tout engagement de capital reel.

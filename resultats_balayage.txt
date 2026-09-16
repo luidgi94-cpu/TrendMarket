@@ -1,0 +1,40 @@
+Donnees : 588,732 bougies M1  |  436 jours  |  2025-01-09 a 2026-09-16
+
+Construction de 5 temoins par permutation horaire...
+fait.
+
+  seuil 0.0  :  4198 trades   9.63/j  WR  60.5%  R +0.166  temoin +0.160  ecart +0.005  t  0.30  DD  -15.3%
+  seuil 0.4  :  3479 trades   7.98/j  WR  60.7%  R +0.176  temoin +0.161  ecart +0.016  t  0.76  DD  -13.9%
+  seuil 0.6  :  3020 trades   6.93/j  WR  60.4%  R +0.165  temoin +0.161  ecart +0.004  t  0.17  DD  -18.9%
+  seuil 0.8  :  2511 trades   5.76/j  WR  60.9%  R +0.195  temoin +0.166  ecart +0.029  t  1.20  DD  -16.6%
+  seuil 1.0  :  2122 trades   4.87/j  WR  59.8%  R +0.173  temoin +0.175  ecart -0.002  t -0.08  DD  -16.7%
+  seuil 1.2  :  1798 trades   4.12/j  WR  59.8%  R +0.161  temoin +0.181  ecart -0.020  t -0.71  DD  -16.9%
+  seuil 1.5  :  1282 trades   2.94/j  WR  61.0%  R +0.155  temoin +0.192  ecart -0.037  t -1.13  DD  -25.6%
+  seuil 2.0  :   594 trades   1.36/j  WR  63.3%  R +0.231  temoin +0.251  ecart -0.020  t -0.41  DD  -23.6%
+  seuil 2.5  :   294 trades   0.67/j  WR  63.6%  R +0.201  temoin +0.263  ecart -0.062  t -0.90  DD  -18.9%
+
+Tableau complet -> resultats_balayage_force.csv
+
+VARIANTES au seuil 0.8
+  (le partiel est impossible a 0.01 lot ; le filtre de stop borne
+   le risque en pourcentage du capital)
+
+  partiel + sans filtre     2511 trades   5.76/j  WR  60.9%  R +0.195  temoin +0.166  ecart +0.029  t  1.20  DD  -16.6%
+  partiel + stop <= 7       1582 trades   3.63/j  WR  61.7%  R +0.221  temoin +0.182  ecart +0.039  t  1.24  DD  -18.6%
+  SANS partiel              2511 trades   5.76/j  WR  39.5%  R +0.327  temoin +0.243  ecart +0.083  t  2.35  DD  -17.5%
+  SANS partiel + stop<=7    1582 trades   3.63/j  WR  40.4%  R +0.420  temoin +0.280  ecart +0.140  t  2.99  DD  -11.0%
+
+  Le filtre de stop est applique A POSTERIORI : il retire les
+  trades a stop large sans liberer la place pour ceux qui
+  auraient suivi. L'effet reel sur la frequence est donc
+  sous-estime. Traiter ce chiffre comme une borne, pas comme
+  une mesure.
+
+LECTURE
+  - 'ecart' est la seule colonne qui mesure de l'edge. 'R_moyen'
+    seul recompense la geometrie autant que le signal.
+  - Un t inferieur a 2 ne permet pas de conclure, quel que soit
+    le R affiche.
+  - Le meilleur seuil du tableau est en partie le fruit du hasard :
+    sur neuf essais, le maximum est biaise vers le haut. Prendre
+    un seuil ou le voisinage tient aussi, pas un pic isole.
