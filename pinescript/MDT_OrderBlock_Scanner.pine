@@ -18,6 +18,13 @@
 //  affiches. Les filtres de tendance et d'horaire ne s'appliquent qu'a la
 //  prise de position, jamais a la detection des zones.
 //
+//  CLOISONNEMENT DES UNITES DE TEMPS :
+//  Les zones DESSINEES sur le graphique proviennent exclusivement de
+//  l'unite de temps affichee. Un Order Block M15 n'apparait donc jamais
+//  sur un graphique M5. Les Order Blocks des autres unites sont uniquement
+//  REPORTES DANS LE TABLEAU, avec leurs bornes de prix : le graphique
+//  reste lisible, et l'on sait ou se situent les zones superieures.
+//
 //  Non-repeignant : signaux evalues sur bougie CLOTUREE, pivots lus avec
 //  leur decalage de confirmation, appels multi-unites en lookahead_off.
 // ============================================================================
@@ -30,8 +37,13 @@ gOB = "1. Detection des Order Blocks"
 impBars  = input.int(5,    "Bougies d'impulsion", minval = 2,        group = gOB)
 impATR   = input.float(0.8,"Taille mini de l'impulsion (x ATR)", step = 0.1, group = gOB,
      tooltip = "Baisser cette valeur = plus d'Order Blocks detectes.")
-obLife   = input.int(120,  "Duree de vie d'un OB (bougies)",         group = gOB)
-maxOB    = input.int(12,   "Nombre d'OB affiches par sens",          group = gOB)
+obLife   = input.int(60,   "Duree de vie d'un OB (bougies)",         group = gOB)
+maxOB    = input.int(3,    "Zones dessinees par sens", minval = 1, maxval = 10, group = gOB,
+     tooltip = "Seules les zones les plus PROCHES du prix sont dessinees. " +
+               "Au-dela de 3 ou 4 par sens le graphique devient illisible.")
+maxDist  = input.float(3.0,"Distance max au prix (%)", step = 0.5,   group = gOB,
+     tooltip = "Une zone situee a 10% du prix n'a aucune utilite " +
+               "operationnelle en scalping. 0 = pas de limite.")
 
 gE = "2. Prise de position"
 useTrend = input.bool(true,"Filtrer par la tendance H1",             group = gE)
@@ -148,8 +160,10 @@ if barstate.isconfirmed and impulse
             if not dup
                 col = dirImp > 0 ? (isPlus ? cBull : cBull2)
                                  : (isPlus ? cBear : cBear2)
-                txt = (dirImp > 0 ? "OB" : "OB") + (isPlus ? "+" : "")
-                     + (dirImp > 0 ? " ACHAT" : " VENTE")
+                // l'unite de temps figure sur l'etiquette : on voit d'un
+                // coup d'oeil que la zone appartient au graphique courant
+                txt = "OB" + (isPlus ? "+" : "") +
+                     (dirImp > 0 ? " ACHAT " : " VENTE ") + timeframe.period
                 nb = box.new(bar_index - obIdx, t, bar_index + obLife, b,
                      bgcolor = showOB ? col : na,
                      border_color = color.new(col, 30), xloc = xloc.bar_index)
@@ -167,26 +181,31 @@ if barstate.isconfirmed and impulse
                 array.push(obs, OB.new(t, b, dirImp, isPlus, bar_index, false,
                      nb, nf, nl))
 
-// purge : zones expirees, traversees, ou au-dela du nombre affiche
+// purge : zones traversees, expirees, ou trop eloignees du prix
 if array.size(obs) > 0
     for i = array.size(obs) - 1 to 0
         o = array.get(obs, i)
         broken  = o.dir > 0 ? close < o.bot : close > o.top
         expired = bar_index - o.born > obLife
-        if broken or expired
+        dist    = math.abs(close - (o.top + o.bot) / 2) / close * 100.0
+        tooFar  = maxDist > 0 and dist > maxDist
+        if broken or expired or tooFar
             box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
             array.remove(obs, i)
-    nBull = 0, nBear = 0
+
+    // On ne conserve que les zones les PLUS PROCHES du prix, par sens.
+    // Une zone lointaine n'a aucune utilite en scalping : le prix ne
+    // l'atteindra pas dans l'horizon de la position.
     for i = array.size(obs) - 1 to 0
         o = array.get(obs, i)
-        keep = true
-        if o.dir > 0
-            nBull += 1
-            keep := nBull <= maxOB
-        else
-            nBear += 1
-            keep := nBear <= maxOB
-        if not keep
+        d = math.abs(close - (o.top + o.bot) / 2)
+        nearer = 0
+        for j = 0 to array.size(obs) - 1
+            if j != i
+                e = array.get(obs, j)
+                if e.dir == o.dir and math.abs(close - (e.top + e.bot) / 2) < d
+                    nearer += 1
+        if nearer >= maxOB
             box.delete(o.bx), box.delete(o.fx), label.delete(o.lb)
             array.remove(obs, i)
 
@@ -298,8 +317,18 @@ plotshape(newSignal and eDir < 0, "Vente", shape.triangledown, location.abovebar
 // Renvoie, pour l'unite demandee : direction de tendance, dernier OB achat
 // et dernier OB vente encore valides, avec leur qualite (imbalance ou non).
 obScan() =>
-    var float bT = na, var float bB = na, var bool bP = false
-    var float sT = na, var float sB = na, var bool sP = false
+    // Plusieurs Order Blocks sont memorises par sens, puis on retient
+    // le PLUS PERTINENT : celui dont le prix est le plus proche du cours
+    // actuel. C'est la seule zone que le prix peut atteindre a court
+    // terme, donc la seule exploitable. A distance comparable, une zone
+    // avec imbalance l'emporte sur une zone simple.
+    var array<float> bT = array.new<float>()
+    var array<float> bB = array.new<float>()
+    var array<bool>  bP = array.new<bool>()
+    var array<float> sT = array.new<float>()
+    var array<float> sB = array.new<float>()
+    var array<bool>  sP = array.new<bool>()
+
     a  = ta.atr(200)
     m  = close - open[impBars - 1]
     dd = m > 0 ? 1 : m < 0 ? -1 : 0
@@ -315,17 +344,52 @@ obScan() =>
             p = idx >= 2 ? (dd > 0 ? low[idx - 2] > high[idx]
                                    : high[idx - 2] < low[idx]) : false
             if dd > 0
-                bT := t, bB := b, bP := p
+                array.push(bT, t), array.push(bB, b), array.push(bP, p)
+                if array.size(bT) > 8
+                    array.shift(bT), array.shift(bB), array.shift(bP)
             else
-                sT := t, sB := b, sP := p
-    if not na(bB) and close < bB
-        bT := na, bB := na, bP := false
-    if not na(sT) and close > sT
-        sT := na, sB := na, sP := false
+                array.push(sT, t), array.push(sB, b), array.push(sP, p)
+                if array.size(sT) > 8
+                    array.shift(sT), array.shift(sB), array.shift(sP)
+
+    // invalidation : le prix a traverse la zone
+    if array.size(bB) > 0
+        for i = array.size(bB) - 1 to 0
+            if close < array.get(bB, i)
+                array.remove(bT, i), array.remove(bB, i), array.remove(bP, i)
+    if array.size(sT) > 0
+        for i = array.size(sT) - 1 to 0
+            if close > array.get(sT, i)
+                array.remove(sT, i), array.remove(sB, i), array.remove(sP, i)
+
+    // selection de la zone la plus proche, a qualite egale privilegiee OB+
+    bestBT = float(na), bestBB = float(na), bestBP = false
+    bd = 1e20
+    if array.size(bT) > 0
+        for i = 0 to array.size(bT) - 1
+            mid = (array.get(bT, i) + array.get(bB, i)) / 2
+            d   = math.abs(close - mid) * (array.get(bP, i) ? 0.85 : 1.0)
+            if d < bd
+                bd := d
+                bestBT := array.get(bT, i)
+                bestBB := array.get(bB, i)
+                bestBP := array.get(bP, i)
+    bestST = float(na), bestSB = float(na), bestSP = false
+    sd = 1e20
+    if array.size(sT) > 0
+        for i = 0 to array.size(sT) - 1
+            mid = (array.get(sT, i) + array.get(sB, i)) / 2
+            d   = math.abs(close - mid) * (array.get(sP, i) ? 0.85 : 1.0)
+            if d < sd
+                sd := d
+                bestST := array.get(sT, i)
+                bestSB := array.get(sB, i)
+                bestSP := array.get(sP, i)
+
     ef = ta.ema(close, emaFast)
     es = ta.ema(close, emaSlow)
     td = ef > es ? 1 : ef < es ? -1 : 0
-    [td, bT, bB, bP, sT, sB, sP]
+    [td, bestBT, bestBB, bestBP, bestST, bestSB, bestSP]
 
 // Appels evalues a CHAQUE bougie, hors de tout bloc conditionnel.
 [t5,  b5t,  b5b,  b5p,  s5t,  s5b,  s5p ] = request.security(syminfo.tickerid, "5",   obScan(), lookahead = barmerge.lookahead_off)
