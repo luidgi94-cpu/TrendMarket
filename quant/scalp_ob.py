@@ -34,6 +34,13 @@ class ScalpConfig:
     use_trend_filter: bool = True
     fractal_k: int = 2
 
+    # Unite de temps de detection de l'Order Block. En pratique reelle, un
+    # trader SMC prend ses Order Blocks sur une unite SUPERIEURE (H1, H4,
+    # voire journalier) et execute en M5. Un Order Block detecte en M5 est
+    # du bruit ; un Order Block H4 est un niveau ou de vrais volumes se sont
+    # traites. C'est l'ecart le plus plausible entre une implementation
+    # mecanique et la pratique des traders discretionnaires.
+    ob_timeframe: str = "5min"        # "5min" | "15min" | "1h" | "4h"
     impulse_bars: int = 5
     impulse_atr: float = 0.8          # seuil bas = plus de setups
     require_imbalance: bool = False
@@ -96,6 +103,54 @@ def _swings(h, l, k):
         if h[i] == h[i-k:i+k+1].max() and (h[i-k:i+k+1] == h[i]).sum() == 1: sh[i] = True
         if l[i] == l[i-k:i+k+1].min() and (l[i-k:i+k+1] == l[i]).sum() == 1: sl[i] = True
     return sh, sl
+
+
+def detect_htf_obs(m5: pd.DataFrame, freq: str, impulse_atr: float,
+                   impulse_bars: int, require_imbalance: bool) -> list[dict]:
+    """Detecte les Order Blocks sur une unite de temps superieure.
+
+    Retourne, pour chaque Order Block : sa direction, ses bornes, et
+    l'horodatage a partir duquel il devient exploitable en M5 (la cloture
+    de la bougie d'impulsion qui l'a valide, jamais avant).
+    """
+    htf = m5.resample(freq).agg({"open": "first", "high": "max",
+                                 "low": "min", "close": "last"}).dropna()
+    if len(htf) < 50:
+        return []
+    o = htf.open.to_numpy(); h = htf.high.to_numpy()
+    l = htf.low.to_numpy(); c = htf.close.to_numpy()
+    prev = htf.close.shift(1)
+    tr = pd.concat([htf.high - htf.low, (htf.high - prev).abs(),
+                    (htf.low - prev).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(48, min_periods=20).mean().to_numpy()
+
+    obs = []
+    for i in range(impulse_bars + 2, len(htf)):
+        if np.isnan(atr[i]) or atr[i] <= 0:
+            continue
+        move = c[i] - o[i - impulse_bars + 1]
+        d = np.sign(move)
+        if d == 0 or abs(move) < impulse_atr * atr[i]:
+            continue
+        ob = -1
+        for j in range(i - impulse_bars, max(i - impulse_bars - 8, 0), -1):
+            if (c[j] < o[j]) if d > 0 else (c[j] > o[j]):
+                ob = j; break
+        if ob < 0:
+            continue
+        if require_imbalance and ob + 2 < len(htf):
+            ok = (l[ob + 2] > h[ob]) if d > 0 else (h[ob + 2] < l[ob])
+            if not ok:
+                continue
+        obs.append({
+            "dir": int(d),
+            "lo": float(min(o[ob], c[ob], l[ob])),
+            "hi": float(max(o[ob], c[ob], h[ob])),
+            # exploitable seulement APRES la cloture de la bougie d'impulsion
+            "valid_from": htf.index[i] + pd.Timedelta(freq),
+            "expires": htf.index[i] + pd.Timedelta(freq) * 20,
+        })
+    return obs
 
 
 def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, dict]:
@@ -162,6 +217,12 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             return None
         return "+".join(sorted(found))
 
+    htf_obs = []
+    if cfg.ob_timeframe != "5min":
+        htf_obs = detect_htf_obs(m5, cfg.ob_timeframe, cfg.impulse_atr,
+                                 cfg.impulse_bars, cfg.require_imbalance)
+        htf_valid = np.array([x["valid_from"].value for x in htf_obs])
+
     equity = cfg.capital; trades = []; per_day = {}
     rej = {"pas_dOB": 0, "pas_imbalance": 0, "zone_non_touchee": 0,
            "pas_de_confirmation": 0, "risque_trop_grand": 0}
@@ -199,15 +260,28 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
             if np.all(np.isnan(seg)) or np.nanmax(seg) < cfg.min_impulse_vol:
                 i += 1; continue
 
-        ob = -1
-        for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
-            if (c[j] < o[j]) if d > 0 else (c[j] > o[j]):
-                ob = j; break
-        if ob < 0:
-            rej["pas_dOB"] += 1; i += 1; continue
-        ob_lo, ob_hi = min(o[ob], c[ob], l[ob]), max(o[ob], c[ob], h[ob])
+        if cfg.ob_timeframe != "5min":
+            # Order Block issu de l'unite superieure, deja valide avant
+            # l'instant courant. Le prix doit revenir dedans maintenant.
+            ts = idx[i].value
+            cand = [x for k, x in enumerate(htf_obs)
+                    if htf_valid[k] <= ts and x["dir"] == d
+                    and x["expires"].value >= ts
+                    and x["lo"] <= h[i] and x["hi"] >= l[i]]
+            if not cand:
+                rej["pas_dOB"] += 1; i += 1; continue
+            zone = cand[-1]
+            ob, ob_lo, ob_hi = i, zone["lo"], zone["hi"]
+        else:
+            ob = -1
+            for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
+                if (c[j] < o[j]) if d > 0 else (c[j] > o[j]):
+                    ob = j; break
+            if ob < 0:
+                rej["pas_dOB"] += 1; i += 1; continue
+            ob_lo, ob_hi = min(o[ob], c[ob], l[ob]), max(o[ob], c[ob], h[ob])
 
-        if cfg.require_imbalance:
+        if cfg.require_imbalance and cfg.ob_timeframe == "5min":
             ok = (l[ob+2] > h[ob]) if d > 0 else (h[ob+2] < l[ob])
             if ob + 2 >= n or not ok:
                 rej["pas_imbalance"] += 1; i += 1; continue
@@ -215,7 +289,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         # fraicheur de l'Order Block : combien de fois a-t-il deja ete
         # touche depuis sa formation ? Un OB "frais" est cense mieux tenir.
         prior_touches = 0
-        for j in range(ob + 1, i + 1):
+        for j in range(min(ob + 1, i), i + 1):
             if l[j] <= ob_hi and h[j] >= ob_lo:
                 prior_touches += 1
 
