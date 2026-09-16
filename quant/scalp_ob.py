@@ -52,6 +52,12 @@ class ScalpConfig:
     atr_pct_floor: float = 0.0        # percentile de vol minimum (0 = desactive)
     atr_pct_cap: float = 100.0        # percentile de vol maximum
     breakeven_at_r: float = 0.0       # >0 : stop a l'entree apres ce multiple
+
+    # --- gestion en deux temps : partiel puis laisser courir -------------
+    partial_usd: float = 0.0          # TP1 en USD/once (50 pips or = 5.00)
+    partial_r: float = 0.0            # ou en multiple de R (prioritaire si >0)
+    partial_fraction: float = 0.5     # part fermee au TP1
+    be_after_partial: bool = True     # remonter le stop a l'equilibre ensuite
     allowed_confirmations: tuple[str, ...] = ()   # () = toutes
     allowed_hours: tuple[int, ...] = ()           # () = toutes
     direction_filter: str = "both"    # "both" | "long" | "short"
@@ -214,23 +220,48 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         else:
             hit = False
             be_px = entry_px + d * (cfg.spread_usd + cfg.slippage_usd)
-            be_trigger = entry_px + d * cfg.breakeven_at_r * risk
             be_done = False
+            # --- TP1 partiel ----------------------------------------------
+            if cfg.partial_r > 0:
+                p_dist = cfg.partial_r * risk
+            elif cfg.partial_usd > 0:
+                p_dist = cfg.partial_usd
+            else:
+                p_dist = 0.0
+            partial_px = entry_px + d * p_dist
+            remaining, realised, partial_done = 1.0, 0.0, False
+            if p_dist <= 0:
+                remaining = 1.0
+
             for j in range(entry_at + 1, min(entry_at + cfg.max_hold_bars, n)):
                 s_ = (l[j] <= stop_px) if d > 0 else (h[j] >= stop_px)
                 t_ = (h[j] >= target_px) if d > 0 else (l[j] <= target_px)
+                # ordre conservateur dans une meme bougie : stop, puis TP1,
+                # puis TP2. On ne suppose jamais la sequence favorable.
                 if s_:
-                    r = (stop_px - entry_px) * d / risk
-                    r_mult, why, hit = r, ("breakeven" if be_done else "stop"), True; break
-                if t_: r_mult, why, hit = cfg.tp_r, "cible", True; break
-                # remontee du stop apres un certain avancement
+                    realised += remaining * (stop_px - entry_px) * d / risk
+                    r_mult, hit = realised, True
+                    why = ("breakeven" if be_done else "stop")
+                    break
+                if p_dist > 0 and not partial_done:
+                    reached = (h[j] >= partial_px) if d > 0 else (l[j] <= partial_px)
+                    if reached:
+                        realised += cfg.partial_fraction * p_dist / risk
+                        remaining -= cfg.partial_fraction
+                        partial_done = True
+                        if cfg.be_after_partial:
+                            stop_px, be_done = be_px, True
+                if t_:
+                    realised += remaining * cfg.tp_r
+                    r_mult, why, hit = realised, "cible", True; break
                 if cfg.breakeven_at_r > 0 and not be_done:
-                    reached = (h[j] >= be_trigger) if d > 0 else (l[j] <= be_trigger)
+                    reached = (h[j] >= entry_px + d * cfg.breakeven_at_r * risk) if d > 0 \
+                        else (l[j] <= entry_px + d * cfg.breakeven_at_r * risk)
                     if reached:
                         stop_px, be_done = be_px, True
             if not hit:
                 j = min(entry_at + cfg.max_hold_bars - 1, n - 1)
-                r_mult = (c[j] - entry_px) * d / risk
+                r_mult = realised + remaining * (c[j] - entry_px) * d / risk
 
         cost = (cfg.spread_usd + cfg.slippage_usd) * cfg.units
         pnl = r_mult * risk * cfg.units - cost
@@ -240,7 +271,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
                        "direction": "long" if d > 0 else "short",
                        "confirmation": kind, "stop_dist": risk,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
-                       "hour": idx[entry_at].hour,
+                       "hour": idx[entry_at].hour, "partiel": partial_done,
                        "exit": why, "equity": equity})
         if equity < 50: break
         i = entry_at + 1
