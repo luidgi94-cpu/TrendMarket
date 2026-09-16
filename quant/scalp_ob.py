@@ -56,7 +56,12 @@ class ScalpConfig:
     allowed_hours: tuple[int, ...] = ()           # () = toutes
     direction_filter: str = "both"    # "both" | "long" | "short"
 
-    stop_mode: str = "confirmation"   # "confirmation" (serre) ou "ob" (large)
+    # Le stop appartient au niveau d'INVALIDATION de la structure, soit le
+    # bas de l'Order Block. Si le prix y repasse, le setup est mort. Le
+    # placer sous la bougie de confirmation le rend deux fois plus serre :
+    # le cout de transaction double en proportion du risque, et le bruit
+    # interne a l'Order Block suffit a sortir la position.
+    stop_mode: str = "ob"             # "ob" (invalidation) ou "confirmation"
     stop_buffer_atr: float = 0.15
     tp_r: float = 1.0                 # petit TP assume
     max_hold_bars: int = 48           # trade court : 4h maximum
