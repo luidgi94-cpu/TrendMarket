@@ -63,6 +63,11 @@ class ScalpConfig:
     direction_filter: str = "both"    # "both" | "long" | "short"
     min_trend_force: float = 0.0      # amplitude minimale de l'ecart d'EMA H1
     require_h4: bool = False          # exiger l'alignement du H4
+    # Volume : proxy du flux d'ordres, seul predicteur a court horizon
+    # reellement documente (Cont, Kukanov & Stoikov). Indisponible sur
+    # donnees simulees, present dans un export MetaTrader 5.
+    min_vol_ratio: float = 0.0        # tickvol de la bougie / mediane glissante
+    min_impulse_vol: float = 0.0      # idem sur la bougie d'impulsion
 
     # Le stop appartient au niveau d'INVALIDATION de la structure, soit le
     # bas de l'Order Block. Si le prix y repasse, le setup est mort. Le
@@ -100,6 +105,12 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
     hours = idx.hour.to_numpy(); days = idx.normalize(); n = len(idx)
     atr = _atr(m5, 288)
     sh, sl = _swings(h, l, cfg.fractal_k)
+    if "tickvol" in m5.columns:
+        tv = m5.tickvol.to_numpy(dtype=float)
+        vmed = m5.tickvol.rolling(288, min_periods=100).median().to_numpy()
+        vratio = np.divide(tv, vmed, out=np.full(len(tv), np.nan), where=vmed > 0)
+    else:
+        vratio = np.full(n, np.nan)
 
     h1 = m5.resample("1h").agg({"open":"first","high":"max","low":"min","close":"last"}).dropna()
     spread_h1 = (h1.close.ewm(span=cfg.htf_fast).mean()
@@ -183,6 +194,10 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         move = c[i] - o[i - cfg.impulse_bars + 1]
         if np.sign(move) != d or abs(move) < cfg.impulse_atr * atr[i]:
             i += 1; continue
+        if cfg.min_impulse_vol > 0:
+            seg = vratio[max(i - cfg.impulse_bars + 1, 0):i + 1]
+            if np.all(np.isnan(seg)) or np.nanmax(seg) < cfg.min_impulse_vol:
+                i += 1; continue
 
         ob = -1
         for j in range(i - cfg.impulse_bars, max(i - cfg.impulse_bars - 10, 1), -1):
@@ -218,6 +233,10 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
         entry_at, kind = -1, None
         for j in range(touch, min(touch + cfg.confirm_bars, n)):
             k = confirmed(j, int(d))
+            if k and cfg.min_vol_ratio > 0:
+                vr = vratio[j]
+                if np.isnan(vr) or vr < cfg.min_vol_ratio:
+                    k = None          # confirmation sans volume = ignoree
             if k: entry_at, kind = j, k; break
             if (l[j] < ob_lo) if d > 0 else (h[j] > ob_hi): break
         if entry_at < 0:
@@ -303,6 +322,7 @@ def backtest_scalp(m5: pd.DataFrame, cfg: ScalpConfig) -> tuple[pd.DataFrame, di
                        "h4_aligne": bool(trend4[i] == d) if not np.isnan(trend4[i]) else None,
                        "touches_ob": prior_touches,
                        "jour_semaine": idx[entry_at].dayofweek,
+                       "vol_ratio": vratio[entry_at],
                        "exit": why, "equity": equity})
         if equity < 50: break
         i = entry_at + 1
