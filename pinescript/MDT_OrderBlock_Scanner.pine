@@ -266,6 +266,15 @@ scan(string tf) =>
          lookahead = barmerge.lookahead_off)
     [d, f]
 
+// Les appels multi-unites sont evalues a CHAQUE bougie, hors de tout bloc
+// conditionnel. Place dans un "if", request.security peut renvoyer des
+// valeurs incoherentes selon les bougies ou le bloc n'est pas execute.
+[d5,   f5]   = scan("5")
+[d15,  f15]  = scan("15")
+[d60,  f60]  = scan("60")
+[d240, f240] = scan("240")
+[dD,   fD]   = scan("D")
+
 var table tb = na
 if showTable and barstate.islast
     table.delete(tb)
@@ -278,10 +287,12 @@ if showTable and barstate.islast
     table.cell(tb, 2, 0, "Force",   text_color = color.silver, text_size = size.small)
     table.cell(tb, 3, 0, "Valide",  text_color = color.silver, text_size = size.small)
 
-    tfs = array.from("5", "15", "60", "240", "D")
-    lbl = array.from("M5", "M15", "H1", "H4", "D")
-    for i = 0 to array.size(tfs) - 1
-        [d, f] = scan(array.get(tfs, i))
+    dirs = array.from(d5, d15, d60, d240, dD)
+    frcs = array.from(f5, f15, f60, f240, fD)
+    lbl  = array.from("M5", "M15", "H1", "H4", "D")
+    for i = 0 to array.size(lbl) - 1
+        d = array.get(dirs, i)
+        f = array.get(frcs, i)
         up = d > 0
         table.cell(tb, 0, i + 1, array.get(lbl, i),
              text_color = color.white, text_size = size.small)
