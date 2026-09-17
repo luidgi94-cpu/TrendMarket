@@ -68,14 +68,25 @@ impBars = input.int(5,    "Fenetre d'impulsion (bougies)", minval = 2, group = g
 impATR  = input.float(0.8,"Taille mini de l'impulsion (x ATR)", step = 0.1, group = gOB,
      tooltip = "0.8 est la valeur du backtest. Monter pour ne garder que " +
                "les impulsions les plus nettes, au prix de la frequence.")
-useBody = input.bool(false, "Zone = corps seul (sans meches)",       group = gOB,
-     tooltip = "Desactive par defaut : meches comprises donne 57.4% de " +
-               "winrate contre 55.1% au corps seul sur les memes 527 jours.")
+useBody = input.bool(true, "Zone = corps seul (sans meches)",        group = gOB,
+     tooltip = "Active par defaut. La justification des meches reposait sur " +
+               "un ecart de winrate mesure sur un echantillon qui ne s'est " +
+               "pas reproduit, et aucune des deux variantes n'a d'edge " +
+               "hors echantillon. Le corps seul donne une zone nettement " +
+               "plus fine, donc un stop plus court, ce qui est la seule " +
+               "difference qui compte encore.")
 maxDraw = input.int(3,    "Zones DESSINEES par sens", minval = 1, maxval = 10, group = gOB,
      tooltip = "Affichage uniquement. Le moteur garde toutes les zones pour " +
                "la detection des entrees ; seules les plus proches du prix " +
                "sont tracees, pour que le graphique reste lisible.")
 keepOB  = input.int(25,   "Zones en memoire par sens", minval = 5, maxval = 60, group = gOB)
+dedup   = input.float(0.5, "Recouvrement max entre zones", minval = 0.1, maxval = 1.0,
+     step = 0.05, group = gOB,
+     tooltip = "Une nouvelle zone qui recouvre une zone existante de meme " +
+               "sens au-dela de cette fraction n'est pas creee. Sans ce " +
+               "filtre, le rallye engendre une zone par bougie et l'ecran " +
+               "affiche un bloc la ou il n'y a qu'un Order Block. A 1.0, " +
+               "aucune deduplication.")
 obLife  = input.int(0,    "Expiration (bougies, 0 = jamais)",        group = gOB,
      tooltip = "A zero, une zone ne disparait que si une CLOTURE passe " +
                "au-dela. Une simple meche ne l'invalide pas : c'est le rejet " +
@@ -210,16 +221,34 @@ if barstate.isconfirmed and impulse
             for i = 0 to array.size(obs) - 1
                 if array.get(obs, i).obBar == srcBar
                     dup := true
-        if not dup
+        float t = na
+        float b = na
+        if useBody
+            t := math.max(open[obIdx], close[obIdx])
+            b := math.min(open[obIdx], close[obIdx])
+        else
+            t := math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
+            b := math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
+
+        // En mode fenetre, la condition d'impulsion reste vraie pendant tout
+        // le rallye. La fenetre glisse d'une bougie a chaque fois, designe
+        // une bougie source legerement differente, et cree une zone qui
+        // recouvre presque la precedente. Empilees, ces zones se lisent
+        // comme un bloc de bougies alors que chacune n'en designe qu'une.
+        // On ecarte donc une nouvelle zone qui recouvre une zone existante
+        // de meme sens au-dela du seuil.
+        couvre = false
+        if array.size(obs) > 0 and t > b
+            for i = 0 to array.size(obs) - 1
+                e = array.get(obs, i)
+                if e.dir == dirImp and not couvre
+                    inter = math.min(e.top, t) - math.max(e.bot, b)
+                    petit = math.min(e.top - e.bot, t - b)
+                    if petit > 0 and inter / petit >= dedup
+                        couvre := true
+
+        if not dup and not couvre
             isPlus = hasImb(obIdx, dirImp)
-            float t = na
-            float b = na
-            if useBody
-                t := math.max(open[obIdx], close[obIdx])
-                b := math.min(open[obIdx], close[obIdx])
-            else
-                t := math.max(math.max(open[obIdx], close[obIdx]), high[obIdx])
-                b := math.min(math.min(open[obIdx], close[obIdx]), low[obIdx])
             col = dirImp > 0 ? (isPlus ? cBull : cBull2) : (isPlus ? cBear : cBear2)
             txt = "OB" + (isPlus ? "+" : "") +
                  (dirImp > 0 ? " ACHAT " : " VENTE ") + timeframe.period
