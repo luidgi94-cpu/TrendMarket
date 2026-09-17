@@ -17,6 +17,43 @@ significativement NEGATIF : le systeme fait moins bien que des bougies
 melangees au hasard, et l'ecart est solide. Signature classique du
 surajustement : le reglage capturait la forme de la premiere moitie.
 
+## Le signal d'entree n'est pas le composant defaillant
+
+Sept facons d'entrer ont ete mesurees, chacune activee SEULE et non par
+elimination, y compris le cas de base jamais teste jusque-la : entrer des
+que le prix touche la zone, sans rien attendre.
+
+    mode                    complet   1re moitie   2e moitie   t (2e)
+    AUCUNE (au toucher)    +0.020     +0.023      -0.188      -4.86
+    meche_rejet seule      +0.098     +0.065      -0.137      -3.77
+    englobante seule       +0.101     +0.089      -0.128      -1.88
+    choch seul             +0.078     +0.075      -0.144      -4.08
+    pinbar seul            +0.118     +0.098      -0.151      -1.90
+    inside_break seul      +0.033     -0.020      -0.336      -4.55
+    les trois d'origine    +0.050     +0.047      -0.155      -4.18
+
+Sur l'echantillon complet, exiger une confirmation bat nettement l'entree
+au toucher : +0.078 a +0.118 contre +0.020, avec des t de 3.0 a 3.8. Le
+mecanisme se lit dans la colonne du temoin, qui tombe de +0.378 a +0.079
+lorsqu'une meche est exigee et devient negatif pour le pinbar : exiger une
+confirmation detruit l'avantage geometrique dont le hasard profitait.
+
+Mais TOUT s'inverse sur la seconde moitie, y compris l'entree sans aucune
+confirmation, qui donne le plus mauvais resultat des sept. Si le signal
+d'entree etait en cause, le cas de base se distinguerait des autres. Il
+fait exactement comme eux.
+
+Ce n'est donc pas la confirmation qui echoue, c'est la ZONE. Quoi que l'on
+fasse au contact d'un Order Block, on perd contre le hasard sur la periode
+recente. Chercher d'autres declencheurs d'entree est inutile : ils
+s'appliqueraient au meme endroit, et c'est l'endroit qui ne vaut rien.
+
+Un changement de regime accompagne ce basculement. La frequence des motifs
+de compression s'effondre entre les deux moities, l'englobante de 8.83 a
+2.41 par jour, le pinbar de 6.36 a 1.62, l'inside break de 7.78 a 1.60,
+tandis que la meche et le CHoCH restent a 9.2 environ. Les bougies sont
+devenues plus grandes, ce qui rarefie mecaniquement les englobements.
+
 ## Ce qui a ete teste avant d'en arriver la
 
 Neuf seuils de force de tendance, quatre variantes de gestion, vingt-quatre

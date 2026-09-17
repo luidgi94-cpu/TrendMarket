@@ -1,0 +1,51 @@
+588,732 bougies M1 | seuil de force 0, sans prise partielle
+Chaque type est active SEUL, et non par elimination.
+
+ECHANTILLON COMPLET  (436 jours)
+  mode                     n   freq    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------------
+  AUCUNE (au toucher)     4257  9.76/j  39.7%  +0.399  +0.378  +0.020  +0.72
+  meche_rejet seule       4078  9.35/j  36.6%  +0.177  +0.079  +0.098  +3.66
+  englobante seule        3944  9.05/j  36.7%  +0.155  +0.055  +0.101  +3.81
+  choch seul              3966  9.10/j  37.8%  +0.165  +0.087  +0.078  +3.00
+  pinbar seul             2699  6.19/j  35.8%  +0.088  -0.031  +0.118  +3.81
+  inside_break seul       3394  7.78/j  35.8%  +0.071  +0.039  +0.033  +1.20
+  les trois d'origine     4198  9.63/j  37.5%  +0.266  +0.216  +0.050  +1.82
+
+PREMIERE MOITIE  (216 jours)
+  mode                     n   freq    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------------
+  AUCUNE (au toucher)     2093  9.69/j  43.6%  +0.540  +0.517  +0.023  +0.56
+  meche_rejet seule       2007  9.29/j  39.6%  +0.273  +0.208  +0.065  +1.65
+  englobante seule        1907  8.83/j  40.1%  +0.246  +0.156  +0.089  +2.30
+  choch seul              1960  9.07/j  40.8%  +0.274  +0.198  +0.075  +1.96
+  pinbar seul             1373  6.36/j  38.9%  +0.182  +0.084  +0.098  +2.20
+  inside_break seul       1681  7.78/j  38.4%  +0.163  +0.183  -0.020  -0.50
+  les trois d'origine     2057  9.52/j  41.0%  +0.381  +0.333  +0.047  +1.18
+
+SECONDE MOITIE  (221 jours)
+  mode                     n   freq    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------------
+  AUCUNE (au toucher)     2150  9.73/j  35.7%  +0.259  +0.447  -0.188  -4.86
+  meche_rejet seule       2056  9.30/j  33.6%  +0.081  +0.218  -0.137  -3.77
+  englobante seule         532  2.41/j  34.6%  +0.044  +0.172  -0.128  -1.88
+  choch seul              1990  9.00/j  34.8%  +0.058  +0.202  -0.144  -4.08
+  pinbar seul              357  1.62/j  32.2%  -0.051  +0.099  -0.151  -1.90
+  inside_break seul        354  1.60/j  32.2%  -0.142  +0.194  -0.336  -4.55
+  les trois d'origine     2127  9.62/j  33.9%  +0.151  +0.306  -0.155  -4.18
+
+
+STABILITE
+  mode                    complet   1re moitie   2e moitie   verdict
+  ------------------------------------------------------------------------
+  AUCUNE (au toucher)    +0.020     +0.023      -0.188     s'inverse
+  meche_rejet seule      +0.098     +0.065      -0.137     s'inverse
+  englobante seule       +0.101     +0.089      -0.128     s'inverse
+  choch seul             +0.078     +0.075      -0.144     s'inverse
+  pinbar seul            +0.118     +0.098      -0.151     s'inverse
+  inside_break seul      +0.033     -0.020      -0.336     negatif des deux cotes
+  les trois d'origine    +0.050     +0.047      -0.155     s'inverse
+
+  Cas de base, entree au toucher : ecart +0.020 R
+  Font mieux que le cas de base : meche_rejet seule, englobante seule, choch seul, pinbar seul, inside_break seul, les trois d'origine
+  A ne retenir que si l'avantage tient sur LES DEUX moities.

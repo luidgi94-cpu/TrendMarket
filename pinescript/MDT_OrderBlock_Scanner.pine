@@ -138,17 +138,16 @@ kzEnd    = input.int(17, "Fin (heure UTC)",   minval = 0, maxval = 23, group = g
 gC = "3. Confirmations"
 useWick   = input.bool(true, "Meche de rejet",                       group = gC)
 useEngulf = input.bool(true, "Bougie englobante",                    group = gC)
-useChoch  = input.bool(false, "Changement de structure (CHoCH)",     group = gC,
-     tooltip = "DESACTIVE : seul resultat stable de toutes les mesures, et " +
-               "il est defavorable. Ecart au temoin -0.065 sur la premiere " +
-               "moitie des donnees et -0.313 sur la seconde, negatif des " +
-               "deux cotes, pour 25% des trades. La meche et l'englobante " +
-               "s'inversent entre les deux moities ; le CHoCH, lui, est " +
-               "mauvais partout.\n" +
-               "Reserve : la detection s'arrete a la premiere confirmation " +
-               "trouvee, donc un trade classe CHoCH est un trade ou aucune " +
-               "des deux autres n'etait presente. On ne peut pas distinguer " +
-               "un CHoCH mauvais d'un reste mauvais.")
+useChoch  = input.bool(true, "Changement de structure (CHoCH)",      group = gC,
+     tooltip = "Reactive. Il avait ete desactive sur la foi d'une mesure " +
+               "biaisee : les types etaient alors compares PAR ELIMINATION, " +
+               "la detection s'arretant a la premiere confirmation trouvee, " +
+               "de sorte qu'un trade classe CHoCH etait un trade ou ni " +
+               "meche ni englobante n'etaient presentes.\n" +
+               "Mesure EN ISOLATION, le CHoCH donne +0.078 d'ecart au " +
+               "temoin avec t = +3.00, comparable a la meche (+0.098) et a " +
+               "l'englobante (+0.101). Il s'inverse hors echantillon comme " +
+               "les autres, ni plus ni moins.")
 wickRatio = input.float(1.5, "Meche / corps mini", step = 0.1,       group = gC)
 
 gR = "4. Risque"
