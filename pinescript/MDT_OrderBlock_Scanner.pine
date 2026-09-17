@@ -86,9 +86,14 @@ useTrend = input.bool(true, "Filtrer par la tendance H1",            group = gE)
 htfTrend = input.timeframe("60", "Unite de tendance",                group = gE)
 emaFast  = input.int(20,   "EMA rapide", minval = 2,                 group = gE)
 emaSlow  = input.int(60,   "EMA lente",  minval = 5,                 group = gE)
-minForce = input.float(0.6,"Force mini de la tendance", step = 0.1,  group = gE,
+minForce = input.float(0.0,"Force mini de la tendance", step = 0.1,  group = gE,
      tooltip = "Ecart des deux EMA divise par la volatilite : mesure la " +
-               "NETTETE de la tendance, pas sa direction.")
+               "NETTETE de la tendance, pas sa direction. Ramene a zero " +
+               "parce que le balayage des neuf seuils n'a montre aucun " +
+               "effet mesurable : +0.004 d'ecart au temoin a 0.60 contre " +
+               "+0.005 a 0.00, et cinq seuils negatifs. Le relever ne " +
+               "fait donc que reduire la frequence des signaux. A zero, " +
+               "seul le SENS de la tendance H1 filtre encore.")
 useKZ    = input.bool(true, "Filtrer les heures",                    group = gE)
 // Le backtest applique sa plage sur l'heure SERVEUR du courtier, qui est
 // en UTC+3 (confirme par le pic de volatilite a 15h30 serveur, soit la
