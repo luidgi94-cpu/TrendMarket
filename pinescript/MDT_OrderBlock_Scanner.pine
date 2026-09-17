@@ -31,14 +31,26 @@
 //  toutes les lignes, y compris celles qui perdent contre le hasard. Un
 //  winrate sans temoin ne mesure rien.
 //
-//  Une piste subsiste. En retirant la prise partielle au premier objectif,
-//  l'ecart passe de +0.029 a +0.140 avec t = 2.99, le winrate tombant a
-//  40%. L'explication serait que l'edge d'un Order Block loge dans les
-//  rares mouvements qui vont loin, et que le partiel ampute precisement
-//  cette queue de distribution. Ce resultat est issu de 36 configurations
-//  testees, sur un seuil choisi parce qu'il etait le meilleur : corrige du
-//  nombre de tests il retombe vers p = 0.10. Il est en cours de validation
-//  hors echantillon.
+//  LE HORS ECHANTILLON A DEPUIS TRANCHE, ET IL EST NEGATIF
+//  Seuil choisi sur les 216 premiers jours, mesure sur les 221 suivants :
+//    apprentissage  ecart +0.082 R  t +2.03
+//    validation     ecart -0.162 R  t -4.37
+//  L'edge ne s'evanouit pas, il s'inverse.
+//
+//  Les trois confirmations, mesurees separement, donnent le meme schema :
+//    type          complet   1re moitie   2e moitie
+//    meche_rejet   +0.120     +0.101       -0.130   s'inverse
+//    englobante    +0.062     +0.083       -0.078   s'inverse
+//    choch         -0.074     -0.065       -0.313   mauvais partout
+//  La meche atteint t = +2.74 sur l'echantillon complet, entierement du
+//  fait de la premiere moitie. Le CHoCH est le seul resultat stable de
+//  tout le projet, et il est defavorable : il est desactive par defaut.
+//
+//  Enfin, sur la seconde moitie le temoin reste stable, +0.306 contre
+//  +0.333, tandis que le systeme reel tombe de +0.381 a +0.151. Trois
+//  mesures independantes convergent, t = -4.37, -4.18 et -4.21 : sur les
+//  sept derniers mois ce systeme fait significativement MOINS BIEN que
+//  des bougies melangees au hasard. La cause n'est pas etablie.
 //
 //  EN L'ETAT, NE PAS ENGAGER DE CAPITAL REEL SUR CE SYSTEME.
 //  L'indicateur reste utilisable pour VISUALISER des Order Blocks. Ce n'est
@@ -47,10 +59,11 @@
 //
 // ============================================================================
 //  SEPARATION DETECTION / AFFICHAGE
-//  La detection cree une zone a chaque bougie du mouvement : c'est ce qui
-//  donne 3.93 trades par jour, et on ne peut pas la reduire sans s'ecarter
-//  des regles validees. Le moteur conserve donc TOUTES les zones, mais
-//  seules les plus PROCHES du prix recoivent un rectangle visible.
+//  La detection cree une zone a chaque bougie du mouvement. Supprimer ces
+//  zones qui se recouvrent a ete mesure et fait tomber l'ecart au temoin
+//  de +0.050 a +0.012 : elles ne sont donc pas de simples doublons. Le
+//  moteur les conserve TOUTES, et seules les plus proches du prix, non
+//  recouvertes par une plus proche encore, recoivent une couleur.
 //
 //  Non-repeignant : decisions sur bougie CLOTUREE, pivots lus avec leur
 //  decalage de confirmation, appels multi-unites en lookahead_off.
@@ -69,14 +82,14 @@ impATR  = input.float(0.8,"Taille mini de l'impulsion (x ATR)", step = 0.1, grou
      tooltip = "0.8 est la valeur du backtest. Monter pour ne garder que " +
                "les impulsions les plus nettes, au prix de la frequence.")
 useBody = input.bool(false, "Zone = corps seul (sans meches)",       group = gOB,
-     tooltip = "Desactive : le corps seul DEGRADE le resultat. Un stop plus\n" +
+     tooltip = "Desactive : le corps seul DEGRADE le resultat.\n" +
                "Mesure sur 436 jours, ecart au temoin : meches et " +
                "doublons +0.050, meches et dedup +0.012, corps et " +
-               "doublons +0.009, corps et dedup -0.028. " +
-               "court est touche plus souvent, et le winrate tombe de " +
-               "37.5% a 33.6%, ce qui annule le gain arithmetique par " +
-               "trade. Ce reglage ne concerne pas que l'affichage : il " +
-               "deplace le stop, donc le R de chaque trade.")
+               "doublons +0.009, corps et dedup -0.028.\n" +
+               "Un stop plus court est touche plus souvent : le winrate " +
+               "tombe de 37.5% a 33.6%, ce qui annule le gain arithmetique " +
+               "par trade. Ce reglage ne concerne donc pas que l'affichage, " +
+               "il deplace le stop et change le R de chaque trade.")
 maxDraw = input.int(3,    "Zones DESSINEES par sens", minval = 1, maxval = 10, group = gOB,
      tooltip = "Affichage uniquement. Le moteur garde toutes les zones pour " +
                "la detection des entrees ; seules les plus proches du prix " +
