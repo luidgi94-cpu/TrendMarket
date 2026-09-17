@@ -1,0 +1,23 @@
+588,732 bougies M1 | 436 jours
+seuil de force 0, sans prise partielle
+
+Construction de 4 temoins...
+fait.
+
+  variante                 n  freq    winrate  stop   R reel   temoin   ecart     t
+  --------------------------------------------------------------------------------------------
+  meches + doublons     4198  9.63/j  WR 37.5%  stop 5.45  R +0.266  temoin +0.216  ecart +0.050  t +1.82
+  meches + dedup        3045  6.98/j  WR 34.8%  stop 5.31  R +0.166  temoin +0.154  ecart +0.012  t +0.39
+  CORPS + doublons      3791  8.69/j  WR 33.6%  stop 4.49  R +0.159  temoin +0.151  ecart +0.009  t +0.30
+  CORPS + dedup         2574  5.90/j  WR 31.5%  stop 4.15  R +0.100  temoin +0.127  ecart -0.028  t -0.79
+
+LECTURE
+  Ancien defaut  (meches, doublons) : ecart +0.050 R
+  Nouveau defaut (corps,  dedup)    : ecart -0.028 R
+  Difference : -0.077 R
+
+  Le R brut monte forcement avec le corps seul, puisque le
+  stop raccourcit. Cela ne vaut pas gain d'information : le
+  temoin monte pour la meme raison. Seule la colonne 'ecart'
+  repond, et aucune valeur ne devient exploitable si elle
+  n'atteint pas t = 2 ET ne survit pas hors echantillon.

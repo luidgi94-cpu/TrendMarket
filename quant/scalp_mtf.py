@@ -54,9 +54,12 @@ class MTFConfig:
     #                la premiere bougie de couleur opposee, en exigeant que
     #                l'impulsion ait depasse cette bougie. Definition
     #                litterale, zone prise au corps.
-    # Fraction de recouvrement au-dela de laquelle une nouvelle zone est
-    # consideree comme un doublon de la precedente et ecartee. A 1.0 aucune
-    # deduplication, ce qui reproduit le comportement d'origine.
+    # Fraction de recouvrement au-dela de laquelle une nouvelle zone serait
+    # ecartee comme doublon de la precedente. LAISSER A 1.0 : la mesure sur
+    # 436 jours montre que la deduplication fait tomber l'ecart au temoin de
+    # +0.050 a +0.012 R. Les zones qui se recouvrent ne sont donc pas de
+    # simples doublons, et les retirer coute de l'information. Le parametre
+    # reste expose pour que le resultat puisse etre reproduit.
     dedup_overlap: float = 1.0
     ob_mode: str = "fenetre"
     ob_lookback: int = 20
