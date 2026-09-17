@@ -66,6 +66,21 @@ class MTFConfig:
     min_leg_bars: int = 2
     use_body: bool = False
 
+    # Types de confirmation ACTIFS. Les mesurer en isolation plutot que par
+    # elimination : la fonction s'arretant a la premiere trouvee, un type
+    # place en dernier n'etait vu que lorsque les autres manquaient, ce qui
+    # ne compare pas des signaux mais des restes.
+    #   meche_rejet   meche >= wick_ratio x corps, cloture du bon sens
+    #   englobante    la bougie englobe la precedente, de couleur opposee
+    #   choch         cloture au-dela du dernier extreme de structure oppose
+    #   pinbar        variante stricte de la meche : >= 2.5 x corps
+    #   inside_break  sortie d'une bougie interieure a la precedente
+    confirm_types: tuple[str, ...] = ("meche_rejet", "englobante", "choch")
+    # A False, on entre des le TOUCHER de la zone, sans rien attendre.
+    # C'est le cas de base : si confirmer n'ameliore pas ce resultat,
+    # l'appareillage de confirmations ne sert a rien.
+    require_confirm: bool = True
+
     confirm_tf: str = "1min"          # "1min" | "3min" | "5min"
     confirm_bars: int = 30            # fenetre de confirmation, en bougies M1
     poi_valid_bars: int = 48          # duree de vie de l'OB, en bougies M5
@@ -125,17 +140,37 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     sh1, sl1 = _swings(hh, ll, cfg.fractal_k)
     pos1 = i1.values.astype("datetime64[ns]")
 
+    actifs = set(cfg.confirm_types)
+
     def confirmed(j: int, d: int) -> str | None:
         body = abs(cc[j] - o1[j]); rng = hh[j] - ll[j]
-        if rng > 0 and body > 0:
-            wick = (min(o1[j], cc[j]) - ll[j]) if d > 0 else (hh[j] - max(o1[j], cc[j]))
-            if wick >= cfg.wick_ratio * body and ((cc[j] > o1[j]) if d > 0 else (cc[j] < o1[j])):
+        wick = (min(o1[j], cc[j]) - ll[j]) if d > 0 else (hh[j] - max(o1[j], cc[j]))
+        sens = (cc[j] > o1[j]) if d > 0 else (cc[j] < o1[j])
+        if "pinbar" in actifs and rng > 0 and body > 0 and sens:
+            # Variante stricte de la meche : le corps doit en outre se
+            # trouver dans le tiers oppose de la bougie, faute de quoi une
+            # longue bougie a deux meches passerait pour un rejet.
+            tiers = rng / 3.0
+            place = (min(o1[j], cc[j]) - ll[j] >= 2 * tiers) if d > 0 \
+                else (hh[j] - max(o1[j], cc[j]) >= 2 * tiers)
+            if wick >= 2.5 * body and place:
+                return "pinbar"
+        if "inside_break" in actifs and j >= 2:
+            # La bougie j-1 est contenue dans la j-2, et la bougie j en sort
+            # du bon cote : compression puis expansion.
+            dedans = hh[j-1] <= hh[j-2] and ll[j-1] >= ll[j-2]
+            if dedans and ((cc[j] > hh[j-1]) if d > 0 else (cc[j] < ll[j-1])):
+                return "inside_break"
+        if "meche_rejet" in actifs and rng > 0 and body > 0:
+            if wick >= cfg.wick_ratio * body and sens:
                 return "meche_rejet"
-        if j >= 1:
+        if "englobante" in actifs and j >= 1:
             if d > 0 and cc[j-1] < o1[j-1] and cc[j] > o1[j] and cc[j] >= o1[j-1] and o1[j] <= cc[j-1]:
                 return "englobante"
             if d < 0 and cc[j-1] > o1[j-1] and cc[j] < o1[j] and cc[j] <= o1[j-1] and o1[j] >= cc[j-1]:
                 return "englobante"
+        if "choch" not in actifs:
+            return None
         micro = np.nan
         for k in range(j - cfg.fractal_k, max(j - 20, 1), -1):
             if d > 0 and sh1[k]: micro = hh[k]; break
@@ -235,7 +270,10 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
 
         # --- confirmation en M1 -------------------------------------------
         entry_at, kind = -1, None
-        for j in range(touch, min(touch + cfg.confirm_bars, n1)):
+        if not cfg.require_confirm:
+            entry_at, kind = touch, "aucune"
+        for j in range(touch, min(touch + cfg.confirm_bars, n1)) \
+                if cfg.require_confirm else []:
             k = confirmed(j, int(d))
             if k: entry_at, kind = j, k; break
             if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
