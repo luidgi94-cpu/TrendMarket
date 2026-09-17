@@ -126,6 +126,12 @@ gV = "5. Affichage"
 showOB    = input.bool(true, "Zones Order Block",                    group = gV)
 showFVG   = input.bool(true, "Zones d'imbalance",                    group = gV)
 showTrade = input.bool(true, "Entree / SL / TP",                     group = gV)
+keepLbl   = input.int(3, "Etiquettes d'entree conservees", minval = 1, maxval = 30,
+     group = gV,
+     tooltip = "Une etiquette est posee a chaque signal. Sans limite elles " +
+               "s'accumulent par centaines et couvrent le graphique. Seules " +
+               "les plus recentes sont conservees ; les anciennes sont " +
+               "supprimees, pas masquees.")
 showTable = input.bool(true, "Tableau",                              group = gV)
 showHors  = input.bool(false, "Montrer aussi les signaux hors filtres", group = gV,
      tooltip = "Affiche en gris les setups valides qui sont rejetes par " +
@@ -331,6 +337,10 @@ var line lE = na
 var line lS = na
 var line lT1 = na
 var line lT2 = na
+// Registre des etiquettes de signal, pour n'en garder que les plus
+// recentes : sans cela elles s'accumulent sur toute l'histoire du
+// graphique et le rendent illisible.
+var array<label> sigLbls = array.new<label>()
 
 // --- 1. GESTION DU SUIVI EN COURS ----------------------------------------
 // Placee AVANT la detection : un suivi qui se termine sur cette bougie
@@ -438,7 +448,7 @@ if showTrade and sDir != 0
     color col = color.new(color.gray, 25)
     if sPasse
         col := sDir > 0 ? color.new(#089981, 10) : color.new(#f23645, 10)
-    label.new(bar_index, sDir > 0 ? low : high,
+    nl = label.new(bar_index, sDir > 0 ? low : high,
          (sDir > 0 ? "ACHAT " : "VENTE ") + sKind + " | " + sConf +
          (sPasse ? "" : "  (hors filtre)") +
          "\nEntree " + str.tostring(sEntry, format.mintick) +
@@ -447,6 +457,9 @@ if showTrade and sDir != 0
          "   TP2 " + str.tostring(sTp2, format.mintick),
          style = sDir > 0 ? label.style_label_up : label.style_label_down,
          color = col, textcolor = color.white, size = size.small)
+    array.push(sigLbls, nl)
+    while array.size(sigLbls) > keepLbl
+        label.delete(array.shift(sigLbls))
 
 plotshape(sDir > 0 and sPasse,  "Achat", shape.triangleup, location.belowbar,
      #089981, size = size.small)
