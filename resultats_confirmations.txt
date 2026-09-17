@@ -1,0 +1,40 @@
+588,732 bougies M1 | seuil de force 0, sans prise partielle
+Rappel : la detection s'arrete a la premiere confirmation trouvee,
+dans l'ordre meche, englobante, CHoCH. Les groupes sont donc
+construits par elimination et non independants.
+
+ECHANTILLON COMPLET  (436 jours)
+  type            n    part    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------
+  meche_rejet   1703  40.6%  37.2%  +0.284  +0.163  +0.120  +2.74
+  englobante    1431  34.1%  37.8%  +0.284  +0.223  +0.062  +1.32
+  choch         1064  25.3%  37.4%  +0.212  +0.286  -0.074  -1.42
+  ensemble      4198  100.0%  37.5%  +0.266  +0.216  +0.050  +1.82
+
+PREMIERE MOITIE  (216 jours)
+  type            n    part    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------
+  meche_rejet    889  43.2%  40.4%  +0.393  +0.293  +0.101  +1.61
+  englobante     580  28.2%  41.2%  +0.401  +0.317  +0.083  +1.10
+  choch          588  28.6%  41.7%  +0.342  +0.407  -0.065  -0.90
+  ensemble      2057  100.0%  41.0%  +0.381  +0.333  +0.047  +1.18
+
+SECONDE MOITIE  (221 jours)
+  type            n    part    WR      R reel   temoin   ecart     t
+  --------------------------------------------------------------------
+  meche_rejet    812  38.2%  33.6%  +0.160  +0.290  -0.130  -2.13
+  englobante     843  39.6%  35.2%  +0.196  +0.274  -0.078  -1.31
+  choch          472  22.2%  32.2%  +0.054  +0.368  -0.313  -4.21
+  ensemble      2127  100.0%  33.9%  +0.151  +0.306  -0.155  -4.18
+
+
+STABILITE DANS LE TEMPS
+  type            complet   1re moitie   2e moitie   stable ?
+  ------------------------------------------------------------
+  meche_rejet   +0.120     +0.101      -0.130     S'INVERSE
+  englobante    +0.062     +0.083      -0.078     S'INVERSE
+  choch         -0.074     -0.065      -0.313     negatif des deux cotes
+
+  Une confirmation n'est retenue que si son ecart reste du meme
+  cote sur les DEUX moities. Un bon chiffre sur l'echantillon
+  complet qui vient d'une seule periode ne se tradera pas.
