@@ -587,9 +587,23 @@ if showTable and barstate.islast
         // en affiche une autre. Sans cette colonne, un signal H1 restait
         // invisible depuis un graphique M5.
         gg = array.get(sgs, i)
-        table.cell(tb, 6, r, gg > 0 ? "ACHAT" : gg < 0 ? "VENTE" : "—",
-             text_color = gg > 0 ? color.white : gg < 0 ? color.white : color.gray,
-             bgcolor = gg > 0 ? #089981 : gg < 0 ? #f23645 : color.new(color.gray, 90),
+        // Le graphique n'affiche une fleche que si les filtres passent.
+        // La colonne doit dire la meme chose, sinon elle annonce un signal
+        // que le graphique refuse de dessiner : c'est ce qui s'est produit
+        // avec une force H1 a 0.43 pour un seuil a 0.60.
+        string txt = "—"
+        color fond = color.new(color.gray, 90)
+        color enc  = color.gray
+        if gg != 0
+            if trendOk and inKZ
+                txt  := gg > 0 ? "ACHAT" : "VENTE"
+                fond := gg > 0 ? #089981 : #f23645
+                enc  := color.white
+            else
+                txt  := gg > 0 ? "achat filtre" : "vente filtre"
+                fond := color.new(color.gray, 60)
+                enc  := color.silver
+        table.cell(tb, 6, r, txt, text_color = enc, bgcolor = fond,
              text_size = size.tiny)
 
     sumT = (t5 > 0 ? 1 : t5 < 0 ? -1 : 0) + (t15 > 0 ? 1 : t15 < 0 ? -1 : 0) +
@@ -635,8 +649,10 @@ if showTable and barstate.islast
     table.cell(tb, 5, 10, hasPos ? str.tostring(eTp2, format.mintick) : "—",
          text_color = #089981, text_size = size.small)
 
+    age = hasPos and not na(eBar) ? bar_index - eBar : 0
     table.cell(tb, 0, 11, "Statut", text_color = color.silver, text_size = size.small)
-    table.cell(tb, 1, 11, eStat, text_color = color.yellow, text_size = size.small)
+    table.cell(tb, 1, 11, eStat + (hasPos ? "  (" + str.tostring(age) + " bougies)" : ""),
+         text_color = color.yellow, text_size = size.small)
     table.merge_cells(tb, 1, 11, 2, 11)
     table.cell(tb, 3, 11, "PnL", text_color = color.silver, text_size = size.small)
     table.cell(tb, 4, 11, na(pnlR) ? "—" : str.tostring(pnlR, "#.00") + " R",
