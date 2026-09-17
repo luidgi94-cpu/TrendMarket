@@ -54,6 +54,10 @@ class MTFConfig:
     #                la premiere bougie de couleur opposee, en exigeant que
     #                l'impulsion ait depasse cette bougie. Definition
     #                litterale, zone prise au corps.
+    # Fraction de recouvrement au-dela de laquelle une nouvelle zone est
+    # consideree comme un doublon de la precedente et ecartee. A 1.0 aucune
+    # deduplication, ce qui reproduit le comportement d'origine.
+    dedup_overlap: float = 1.0
     ob_mode: str = "fenetre"
     ob_lookback: int = 20
     min_leg_bars: int = 2
@@ -138,6 +142,7 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         return None
 
     equity = cfg.capital; trades = []; per_day = {}
+    zones_recentes: list = []
     rej = {"pas_dOB": 0, "zone_non_touchee": 0, "pas_de_confirmation": 0}
     n5 = len(i5); n1 = len(i1)
     i = 300
@@ -180,6 +185,30 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
             ob_lo = min(o5[ob], c5[ob]); ob_hi = max(o5[ob], c5[ob])
         else:
             ob_lo = min(o5[ob], c5[ob], l5[ob]); ob_hi = max(o5[ob], c5[ob], h5[ob])
+
+        # En mode fenetre, la condition d'impulsion reste vraie pendant tout
+        # le rallye : la fenetre glisse d'une bougie a chaque fois, designe
+        # une bougie source voisine et produit une zone qui recouvre presque
+        # la precedente. On ecarte ces quasi-doublons lorsque le seuil le
+        # demande. Contrairement au plafond d'affichage de l'indicateur,
+        # ceci agit sur la DETECTION et change donc le nombre de trades.
+        if cfg.dedup_overlap < 1.0:
+            zones_recentes = [z for z in zones_recentes
+                              if i - z[0] <= cfg.poi_valid_bars]
+            double = False
+            for _, zd, zlo, zhi in zones_recentes:
+                if zd != d:
+                    continue
+                inter = min(zhi, ob_hi) - max(zlo, ob_lo)
+                petit = min(zhi - zlo, ob_hi - ob_lo)
+                if petit > 0 and inter / petit >= cfg.dedup_overlap:
+                    double = True
+                    break
+            if double:
+                rej["doublon"] = rej.get("doublon", 0) + 1
+                i += 1
+                continue
+            zones_recentes.append((i, d, ob_lo, ob_hi))
 
         # Imbalance ANCREE sur l'Order Block : la troisieme bougie du
         # mouvement ne revient pas combler l'extremite de l'OB. C'est la
