@@ -309,9 +309,16 @@ footer p{margin:0 0 7px; max-width:70ch}
       </select></div>
       <div style="grid-column:1/-1"><label for="f-note">Note</label><textarea id="f-note" placeholder="Confirmation utilisée, contexte, ce que tu referais autrement."></textarea></div>
     </div>
+    <div style="padding:0 18px">
+      <div id="form-err" class="banner"
+           style="margin:0; background:var(--loss-soft); color:var(--loss);
+                  border-color:color-mix(in srgb,var(--loss) 30%,transparent)" hidden></div>
+    </div>
     <div class="actions">
       <button class="primary" id="add">Enregistrer le trade</button>
       <button class="quiet" id="clearform">Vider</button>
+      <span class="hint" style="margin:0">Le prix de sortie peut attendre : un trade
+      enregistre sans sortie reste « en cours » et se cloture d'un clic.</span>
     </div>
   </section>
 
@@ -364,30 +371,42 @@ const cpt = () => data.comptes.find(c => c.id === data.courant) || data.comptes[
 const DEMO = [
   {id:"d1", ts:"2026-09-15T09:35", dir:-1, lot:0.01, sig:4322.32, ent:4322.55, sl:4327.98, tp:4306.03, out:4327.98, why:"Stop", conf:"Mèche de rejet", type:"OB+", note:"", demo:true},
   {id:"d2", ts:"2026-09-15T13:10", dir:1,  lot:0.01, sig:4310.80, ent:4310.88, sl:4306.12, tp:4324.84, out:4324.84, why:"Objectif", conf:"Englobante", type:"OB", note:"", demo:true},
-  {id:"d3", ts:"2026-09-16T10:05", dir:-1, lot:0.01, sig:4351.40, ent:4351.77, sl:4356.02, tp:4338.53, out:4349.10, why:"Durée max", conf:"CHoCH", type:"OB", note:"", demo:true}
+  {id:"d3", ts:"2026-09-16T10:05", dir:-1, lot:0.01, sig:4351.40, ent:4351.77, sl:4356.02, tp:4338.53, out:4349.10, why:"Durée max", conf:"CHoCH", type:"OB", note:"", demo:true},
+  {id:"d4", ts:"2026-09-17T11:20", dir:1,  lot:0.01, sig:4338.10, ent:4338.24, sl:4333.55, tp:4352.18, out:null, why:"", conf:"Englobante", type:"OB+", note:"", demo:true}
 ];
 
 /* ---------- calculs ---------- */
 function enrich(t, c){
   const risk = Math.abs(t.ent - t.sl);
-  const R = risk > 0 ? (t.out - t.ent) * t.dir / risk : 0;
+  // Un trade sans prix de sortie est EN COURS : il n'a pas encore de R.
+  // Le carnet doit pouvoir l'accueillir des la prise de position, sans quoi
+  // il faudrait attendre la cloture pour noter quoi que ce soit.
+  const ouvert = t.out === null || t.out === undefined || !isFinite(t.out);
+  const R = (!ouvert && risk > 0) ? (t.out - t.ent) * t.dir / risk : null;
   const slip = (t.ent - t.sig) * t.dir;        // positif = entree defavorable
-  const val = (t.out - t.ent) * t.dir * t.lot * c.ppp;
-  return {...t, risk, R, slip, val};
+  const val = ouvert ? 0 : (t.out - t.ent) * t.dir * t.lot * c.ppp;
+  return {...t, risk, R, slip, val, ouvert};
 }
 const med = a => a.length ? [...a].sort((x,y)=>x-y)[Math.floor(a.length/2)] : NaN;
 
 function stats(list){
-  const n = list.length;
-  if (!n) return {n:0};
-  const Rs = list.map(t => t.R);
+  // Le slippage se connait des l'entree, donc il se mesure sur TOUS les
+  // trades. Le R n'existe qu'a la cloture : l'esperance, l'intervalle et le
+  // resultat ne portent que sur les trades fermes.
+  const clos = list.filter(t => !t.ouvert);
+  const nOuv = list.length - clos.length;
+  const slipTous = med(list.map(t => t.slip));
+  const n = clos.length;
+  if (!n) return {n:0, nOuv, medSlip:slipTous};
+  const Rs = clos.map(t => t.R);
   const mean = Rs.reduce((a,b)=>a+b,0)/n;
   const sd = n > 1 ? Math.sqrt(Rs.reduce((a,b)=>a+(b-mean)**2,0)/(n-1)) : 0;
   const se = n > 1 ? sd/Math.sqrt(n) : 0;
   return {n, mean, sd, se, lo:mean-1.96*se, hi:mean+1.96*se,
-          wr: list.filter(t=>t.R>0).length/n*100,
-          medSlip: med(list.map(t=>t.slip)),
-          val: list.reduce((a,t)=>a+t.val,0),
+          nOuv,
+          wr: clos.filter(t=>t.R>0).length/n*100,
+          medSlip: slipTous,
+          val: clos.reduce((a,t)=>a+t.val,0),
           need: (sd > 0 && Math.abs(mean) > 1e-6)
             ? Math.ceil((1.96*sd/Math.abs(mean))**2) : null};
 }
@@ -419,7 +438,8 @@ function render(){
   $("demo-banner").hidden = !exemple;
   const s = stats(list);
 
-  $("t-n").textContent = exemple ? "0" : s.n;
+  $("t-n").textContent = exemple ? "0"
+    : (s.n + (s.nOuv ? " + " + s.nOuv + " en cours" : ""));
   $("t-eq").textContent = fmt(c.cap + (exemple ? 0 : s.val)) + " " + c.cur;
   $("th-cur").textContent = c.cur;
 
@@ -493,7 +513,8 @@ function render(){
   const dj = reels.filter(x => (x.ts||"").slice(0,10) === today);
   const pj = dj.reduce((a,x)=>a+x.val,0);
   let serie = 0;
-  for (let i = reels.length-1; i >= 0 && reels[i].R < 0; i--) serie++;
+  const reelsClos = reels.filter(x => !x.ouvert);
+  for (let i = reelsClos.length-1; i >= 0 && reelsClos[i].R < 0; i--) serie++;
   const totPct = s.n && !exemple ? s.val/c.cap*100 : 0;
   const set = (iv, ip, txt, lvl) => {
     $(iv).textContent = txt;
@@ -541,13 +562,25 @@ function render(){
     sp.textContent = x.dir > 0 ? "Achat" : "Vente";
     dtd.append(sp); tr.append(dtd);
     tr.append(cell(fmt(x.sig),"n"), cell(fmt(x.ent),"n"), cell(sgn(x.slip),"n"),
-              cell(fmt(x.sl),"n"), cell(fmt(x.out),"n"));
-    tr.append(cell(sgn(x.R) + " R", "n " + (x.R >= 0 ? "r-pos" : "r-neg")));
-    tr.append(cell(sgn(x.val) + " " + c.cur, "n"));
+              cell(fmt(x.sl),"n"), cell(x.ouvert ? "—" : fmt(x.out),"n"));
+    if (x.ouvert){
+      tr.append(cell("en cours", "n"));
+      tr.append(cell("—", "n"));
+    } else {
+      tr.append(cell(sgn(x.R) + " R", "n " + (x.R >= 0 ? "r-pos" : "r-neg")));
+      tr.append(cell(sgn(x.val) + " " + c.cur, "n"));
+    }
     tr.append(cell((x.type ? x.type + " " : "") + (x.conf || "—")));
-    tr.append(cell(x.why));
+    tr.append(cell(x.ouvert ? "—" : x.why));
     const atd = document.createElement("td");
     if (!x.demo){
+      if (x.ouvert){
+        const f = document.createElement("button");
+        f.textContent = "Clôturer";
+        f.style.cssText = "padding:3px 9px; font-size:12px; margin-right:6px";
+        f.onclick = () => cloturer(x.id);
+        atd.append(f);
+      }
       const b = document.createElement("button");
       b.className = "del"; b.textContent = "×";
       b.setAttribute("aria-label","Supprimer ce trade");
@@ -560,6 +593,26 @@ function render(){
 
   renderCmp();
   drawCurve(list, c);
+}
+
+/* ---------- cloture d'une position ouverte ----------
+   Le motif est DEDUIT du prix de sortie plutot que demande : si le prix a
+   atteint le stop c'est un stop, s'il a atteint l'objectif c'est l'objectif,
+   sinon c'est une sortie manuelle. Une question de moins a poser sur un
+   telephone, et un motif qui ne peut pas mentir. */
+function cloturer(id){
+  const c = cpt();
+  const t = c.trades.find(x => x.id === id);
+  if (!t) return;
+  const saisi = prompt("Prix de sortie ?", "");
+  if (saisi === null) return;
+  const px = parseFloat(String(saisi).replace(",", ".").replace(/\s/g, ""));
+  if (!isFinite(px)){ alert("Prix non reconnu."); return; }
+  t.out = px;
+  const surSL = t.dir > 0 ? px <= t.sl : px >= t.sl;
+  const surTP = isFinite(t.tp) && (t.dir > 0 ? px >= t.tp : px <= t.tp);
+  t.why = surSL ? "Stop" : surTP ? "Objectif" : "Sortie manuelle";
+  save();
 }
 
 /* ---------- demo contre reel ---------- */
@@ -721,27 +774,39 @@ function readForm(){
     why: $("f-why").value, conf: $("f-conf").value, type: $("f-type").value,
     note: $("f-note").value.trim()
   };
-  if (!isFinite(t.ent) || !isFinite(t.sl) || !isFinite(t.out)) return null;
-  if (Math.abs(t.ent - t.sl) < 1e-9) return null;
+  // Seuls l'entree et le stop sont exiges : ils definissent le risque, donc
+  // le R. La sortie peut venir plus tard.
+  if (!isFinite(t.ent)) return {manque:"le prix d'entrée réel"};
+  if (!isFinite(t.sl)) return {manque:"le stop"};
+  if (Math.abs(t.ent - t.sl) < 1e-9) return {manque:"un stop différent de l'entrée"};
+  if (!isFinite(t.out)) t.out = null;
   if (!isFinite(t.sig)) t.sig = t.ent;
-  if (!isFinite(t.tp)) t.tp = t.out;
+  if (!isFinite(t.tp) && t.out !== null) t.tp = t.out;
   if (!isFinite(t.lot) || t.lot <= 0) t.lot = 0.01;
   if (!t.ts) t.ts = new Date().toISOString().slice(0,16);
   return t;
 }
 function updatePreview(){
   const t = readForm();
-  if (!t){ $("prev").textContent = "—"; return; }
+  if (!t || t.manque){ $("prev").textContent = "—"; return; }
   const e = enrich(t, cpt());
-  $("prev").textContent = sgn(e.R) + " R   " + sgn(e.val) + " " + cpt().cur
-    + "   slip " + sgn(e.slip) + " pt";
+  $("prev").textContent = e.ouvert
+    ? "en cours   slip " + sgn(e.slip) + " pt"
+    : sgn(e.R) + " R   " + sgn(e.val) + " " + cpt().cur + "   slip " + sgn(e.slip) + " pt";
 }
 ["f-dir","f-lot","f-sig","f-ent","f-sl","f-tp","f-out"].forEach(id =>
   $(id).addEventListener("input", updatePreview));
 
 $("add").onclick = () => {
   const t = readForm();
-  if (!t){ $("prev").textContent = "Entrée, stop et sortie sont nécessaires"; return; }
+  const err = $("form-err");
+  if (!t || t.manque){
+    err.hidden = false;
+    err.textContent = "Il manque " + ((t && t.manque) || "le prix d'entrée réel")
+      + ". Le prix de sortie, lui, est optionnel : le trade sera noté « en cours ».";
+    return;
+  }
+  err.hidden = true;
   cpt().trades.push(t);
   ["f-sig","f-ent","f-sl","f-tp","f-out","f-note","f-paste"].forEach(id => $(id).value = "");
   $("prev").textContent = "—";
