@@ -11,6 +11,7 @@
   --accent:#0d6a72; --accent-soft:#e0efef;
   --win:#1b7550; --loss:#ad382d; --warn:#8a6210;
   --win-soft:#e3f2ea; --loss-soft:#fbe7e4; --warn-soft:#f8efdc;
+  --on-accent:#ffffff;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -20,6 +21,7 @@
     --accent:#52c2ca; --accent-soft:#123034;
     --win:#4fb886; --loss:#e4735f; --warn:#d2a343;
     --win-soft:#12291f; --loss-soft:#2c1714; --warn-soft:#2a2113;
+    --on-accent:#07171a;
   }
 }
 :root[data-theme="dark"]{
@@ -29,6 +31,7 @@
   --accent:#52c2ca; --accent-soft:#123034;
   --win:#4fb886; --loss:#e4735f; --warn:#d2a343;
   --win-soft:#12291f; --loss-soft:#2c1714; --warn-soft:#2a2113;
+  --on-accent:#07171a;
 }
 
 *{box-sizing:border-box}
@@ -143,9 +146,7 @@ button{
 }
 button:hover{border-color:var(--accent)}
 button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
-:root[data-theme="dark"] button.primary,
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#07171a}}
+button.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
 button.primary:hover{opacity:.9}
 button.quiet{background:transparent; border-color:transparent; color:var(--muted)}
 .preview{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--muted); margin-left:auto}
@@ -186,7 +187,7 @@ footer p{margin:0 0 7px; max-width:70ch}
 <div class="top">
   <div class="top-in">
     <div class="mark">Carnet de bord <span>XAUUSD</span></div>
-    <div class="top-stat">Capital <b id="t-eq">450,00 $</b></div>
+    <div class="top-stat">Capital <b id="t-eq">—</b></div>
     <div class="top-stat">Trades <b id="t-n">0</b></div>
     <div class="top-stat" id="t-store">local</div>
   </div>
@@ -228,7 +229,24 @@ footer p{margin:0 0 7px; max-width:70ch}
   </dl>
 
   <section class="limits">
-    <div class="eyebrow">Limites du jour — fixées avant de trader</div>
+    <div class="eyebrow">Compte</div>
+    <div class="lim-row" style="gap:12px; flex-wrap:wrap">
+      <div style="flex:1; min-width:110px">
+        <label for="f-cap">Capital de départ</label>
+        <input type="number" id="f-cap" step="1" min="1" value="450">
+      </div>
+      <div style="flex:1; min-width:110px">
+        <label for="f-cur">Devise</label>
+        <select id="f-cur"><option>$</option><option>€</option></select>
+      </div>
+      <div style="flex:1; min-width:110px">
+        <label for="f-ppp">Valeur du point, 1 lot</label>
+        <input type="number" id="f-ppp" step="1" min="0.01" value="100">
+        <div class="hint">100 sur XAUUSD</div>
+      </div>
+    </div>
+    <div id="cap-warn" class="banner" style="margin:12px 0 4px" hidden></div>
+    <div class="eyebrow" style="margin-top:18px">Limites du jour — fixées avant de trader</div>
     <div class="lim-row"><span class="lim-name">Trades aujourd'hui</span><span class="lim-val" id="l-n">0 / 3</span><span class="pill ok" id="l-n-p">OK</span></div>
     <div class="lim-row"><span class="lim-name">Pertes consécutives</span><span class="lim-val" id="l-c">0 / 2</span><span class="pill ok" id="l-c-p">OK</span></div>
     <div class="lim-row"><span class="lim-name">Résultat du jour</span><span class="lim-val" id="l-d">0,0 %</span><span class="pill ok" id="l-d-p">OK</span></div>
@@ -268,7 +286,7 @@ footer p{margin:0 0 7px; max-width:70ch}
     <div class="tablewrap"><table>
       <thead><tr>
         <th>Date</th><th>Sens</th><th>Signal</th><th>Entrée</th><th>Slip.</th>
-        <th>Stop</th><th>Sortie</th><th>R</th><th>$</th><th>Motif</th><th></th>
+        <th>Stop</th><th>Sortie</th><th>R</th><th id="th-cur">$</th><th>Motif</th><th></th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
@@ -286,7 +304,27 @@ footer p{margin:0 0 7px; max-width:70ch}
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const CAP = 450;
+let CAP = 450, CUR = "$", PPP = 100;
+function readCap(){
+  const c = parseFloat($("f-cap").value);
+  const v = parseFloat($("f-ppp").value);
+  CAP = isFinite(c) && c > 0 ? c : 450;
+  PPP = isFinite(v) && v > 0 ? v : 100;
+  CUR = $("f-cur").value;
+  try { localStorage.setItem("journal-compte", JSON.stringify({CAP, CUR, PPP})); } catch (e) {}
+}
+function loadCap(){
+  try {
+    const r = localStorage.getItem("journal-compte");
+    if (r){
+      const o = JSON.parse(r);
+      if (o.CAP) $("f-cap").value = o.CAP;
+      if (o.PPP) $("f-ppp").value = o.PPP;
+      if (o.CUR) $("f-cur").value = o.CUR;
+    }
+  } catch (e) {}
+  readCap();
+}
 const fmt = (v, d = 2) => v.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
 const sgn = v => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
 
@@ -305,7 +343,7 @@ function enrich(t){
   const risk = Math.abs(t.ent - t.sl);
   const R = risk > 0 ? (t.out - t.ent) * t.dir / risk : 0;
   const slip = (t.ent - t.sig) * t.dir;          // positif = entree defavorable
-  const usd = (t.out - t.ent) * t.dir * t.lot * 100;
+  const usd = (t.out - t.ent) * t.dir * t.lot * PPP;
   return {...t, risk, R, slip, usd};
 }
 function stats(list){
@@ -333,7 +371,7 @@ function render(){
   const s = stats(list);
 
   $("t-n").textContent = isDemo ? "0" : s.n;
-  $("t-eq").textContent = fmt(CAP + (isDemo ? 0 : s.usd)) + " $";
+  $("t-eq").textContent = fmt(CAP + (isDemo ? 0 : s.usd)) + " " + CUR;
 
   // tuiles
   $("s-exp").textContent = s.n > 1 ? sgn(s.mean) + " R" : "—";
@@ -342,7 +380,7 @@ function render(){
   $("s-slip-s").textContent = s.n
     ? (Math.abs(s.medSlip) > 0.5 ? "au-delà de 0,5 pt : non exécutable à la main" : "écart au prix du signal")
     : "écart au prix du signal";
-  $("s-pnl").textContent = s.n ? sgn(s.usd) + " $" : "—";
+  $("s-pnl").textContent = s.n ? sgn(s.usd) + " " + CUR : "—";
   $("s-pnl-s").textContent = s.n ? fmt(s.usd/CAP*100,1) + " % du capital" : "frais inclus dans tes prix";
 
   // intervalle de confiance
@@ -439,7 +477,7 @@ function render(){
     tr.append(cell(fmt(t.sig), "n"), cell(fmt(t.ent), "n"), cell(sgn(t.slip), "n"),
               cell(fmt(t.sl), "n"), cell(fmt(t.out), "n"));
     tr.append(cell(sgn(t.R) + " R", "n " + (t.R >= 0 ? "r-pos" : "r-neg")));
-    tr.append(cell(sgn(t.usd) + " $", "n"), cell(t.why));
+    tr.append(cell(sgn(t.usd) + " " + CUR, "n"), cell(t.why));
     const atd = document.createElement("td");
     if (!t.demo){
       const b = document.createElement("button");
@@ -452,6 +490,26 @@ function render(){
     tb.append(tr);
   });
   $("empty").hidden = list.length > 0;
+
+  // Le risque par trade ne depend pas du capital : il depend du stop et du
+  // lot minimum. Sur un compte trop petit, le meme trade devient une mise
+  // de casino. On le calcule et on le dit.
+  const stops = list.filter(t => t.risk > 0).map(t => t.risk).sort((a,b)=>a-b);
+  const stopMed = stops.length ? stops[Math.floor(stops.length/2)] : 5.68;
+  const risque = stopMed * 0.01 * PPP;              // au lot minimum
+  const pct = risque / CAP * 100;
+  const w = $("cap-warn");
+  if (pct > 5){
+    const perdants = Math.ceil(100 / pct);
+    w.hidden = false;
+    w.textContent = "Au lot minimum de 0,01 et avec un stop médian de "
+      + fmt(stopMed,2) + " points, chaque trade risque " + fmt(risque,2) + " " + CUR
+      + ", soit " + fmt(pct,1) + " % de " + fmt(CAP,0) + " " + CUR + ". "
+      + perdants + " trades perdants d'affilée suffisent à effacer le compte, et "
+      + "il en faut une trentaine rien que pour estimer ton slippage. "
+      + "Pour tenir 2 % par trade il faudrait " + fmt(risque/0.02,0) + " " + CUR + ".";
+  } else { w.hidden = true; }
+  $("th-cur").textContent = CUR;
 
   drawCurve(list);
 }
@@ -553,7 +611,10 @@ $("wipe").onclick = () => {
 };
 
 /* ---------- demarrage ---------- */
+["f-cap","f-cur","f-ppp"].forEach(id =>
+  $(id).addEventListener("input", () => { readCap(); render(); }));
 $("f-date").value = new Date().toISOString().slice(0,16);
+loadCap();
 localLoad();
 render();
 
