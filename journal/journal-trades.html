@@ -1,0 +1,584 @@
+<title>Carnet de bord XAUUSD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#eef1f4; --surface:#ffffff; --surface-2:#f7f9fa;
+  --ink:#141a21; --muted:#5b6673; --faint:#8d96a2;
+  --line:#dbe1e7; --line-strong:#c3ccd5;
+  --accent:#0d6a72; --accent-soft:#e0efef;
+  --win:#1b7550; --loss:#ad382d; --warn:#8a6210;
+  --win-soft:#e3f2ea; --loss-soft:#fbe7e4; --warn-soft:#f8efdc;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0d1218; --surface:#151b23; --surface-2:#1b222b;
+    --ink:#e3e9ef; --muted:#8c96a3; --faint:#69737f;
+    --line:#242d38; --line-strong:#33404e;
+    --accent:#52c2ca; --accent-soft:#123034;
+    --win:#4fb886; --loss:#e4735f; --warn:#d2a343;
+    --win-soft:#12291f; --loss-soft:#2c1714; --warn-soft:#2a2113;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0d1218; --surface:#151b23; --surface-2:#1b222b;
+  --ink:#e3e9ef; --muted:#8c96a3; --faint:#69737f;
+  --line:#242d38; --line-strong:#33404e;
+  --accent:#52c2ca; --accent-soft:#123034;
+  --win:#4fb886; --loss:#e4735f; --warn:#d2a343;
+  --win-soft:#12291f; --loss-soft:#2c1714; --warn-soft:#2a2113;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.5;
+}
+.wrap{max-width:900px; margin:0 auto; padding:0 16px; padding-block:0 48px}
+h1,h2,h3{margin:0; text-wrap:balance}
+.num{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+
+/* ---- barre de tete ---- */
+.top{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+  background:color-mix(in srgb,var(--ground) 92%,transparent);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.top-in{
+  max-width:900px; margin:0 auto; padding:10px 16px;
+  display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+}
+.mark{
+  font-family:Fraunces,Georgia,serif; font-weight:600; font-size:17px;
+  letter-spacing:-.01em; margin-right:auto;
+}
+.mark span{color:var(--accent)}
+.top-stat{font-size:12px; color:var(--muted); white-space:nowrap}
+.top-stat b{font-family:"IBM Plex Mono",monospace; font-size:14px; color:var(--ink); font-weight:600}
+
+/* ---- verdict ---- */
+.verdict{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:4px; margin-top:20px; padding:20px 18px 18px;
+}
+.eyebrow{
+  font-size:10.5px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--faint); font-weight:600; margin-bottom:10px;
+}
+.verdict h2{font-family:Fraunces,Georgia,serif; font-size:21px; font-weight:600; line-height:1.25}
+.verdict p{margin:8px 0 0; color:var(--muted); font-size:13.5px; max-width:62ch}
+
+/* l'intervalle de confiance, piece maitresse */
+.ic{margin-top:20px}
+.ic-scale{position:relative; height:52px}
+.ic-axis{position:absolute; left:0; right:0; top:26px; height:1px; background:var(--line-strong)}
+.ic-zero{position:absolute; top:12px; bottom:10px; width:1px; background:var(--ink); opacity:.45}
+.ic-zero::after{
+  content:"0"; position:absolute; top:-14px; left:50%; transform:translateX(-50%);
+  font-size:10px; color:var(--muted); font-family:"IBM Plex Mono",monospace;
+}
+.ic-band{
+  position:absolute; top:20px; height:13px; border-radius:2px;
+  background:var(--accent-soft); border:1px solid var(--accent);
+}
+.ic-point{position:absolute; top:15px; width:3px; height:23px; background:var(--accent); border-radius:1px}
+.ic-legend{
+  display:flex; justify-content:space-between; font-size:11px;
+  color:var(--faint); font-family:"IBM Plex Mono",monospace; margin-top:2px;
+}
+
+/* ---- progression ---- */
+.prog{margin-top:18px; padding-top:16px; border-top:1px solid var(--line)}
+.prog-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:13px}
+.prog-head b{font-family:"IBM Plex Mono",monospace; font-size:15px}
+.prog-bar{height:6px; background:var(--surface-2); border:1px solid var(--line); border-radius:3px; margin-top:8px; overflow:hidden}
+.prog-fill{height:100%; background:var(--accent); width:0}
+.prog-note{font-size:12px; color:var(--muted); margin-top:8px}
+
+/* ---- tuiles ---- */
+.tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:4px;
+  margin-top:16px; overflow:hidden}
+.tile{background:var(--surface); padding:13px 14px}
+.tile dt{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint); font-weight:600}
+.tile dd{margin:5px 0 0; font-family:"IBM Plex Mono",monospace; font-size:21px; font-weight:500; letter-spacing:-.02em}
+.tile small{display:block; font-family:"IBM Plex Sans",sans-serif; font-size:11.5px; color:var(--muted); margin-top:3px; font-weight:400}
+
+/* ---- limites de risque ---- */
+.limits{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:16px 18px 18px}
+.lim-row{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:13.5px}
+.lim-row:first-of-type{border-top:0}
+.lim-name{flex:1; min-width:0}
+.lim-val{font-family:"IBM Plex Mono",monospace; font-size:13.5px}
+.pill{font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  padding:3px 8px; border-radius:3px; white-space:nowrap}
+.pill.ok{background:var(--win-soft); color:var(--win)}
+.pill.near{background:var(--warn-soft); color:var(--warn)}
+.pill.stop{background:var(--loss-soft); color:var(--loss)}
+
+/* ---- formulaire ---- */
+.panel{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-radius:4px}
+.panel-head{display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--line)}
+.panel-head h3{font-family:Fraunces,Georgia,serif; font-size:16px; font-weight:600; margin-right:auto}
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; padding:16px 18px}
+label{display:block; font-size:11px; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--faint); font-weight:600; margin-bottom:5px}
+input,select,textarea{
+  width:100%; padding:8px 9px; background:var(--surface-2); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:3px;
+  font-family:"IBM Plex Mono",monospace; font-size:14px;
+}
+textarea{font-family:"IBM Plex Sans",sans-serif; resize:vertical; min-height:56px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+.hint{font-size:11px; color:var(--faint); margin-top:4px; font-family:"IBM Plex Sans",sans-serif; text-transform:none; letter-spacing:0}
+.actions{display:flex; gap:10px; padding:0 18px 18px; flex-wrap:wrap; align-items:center}
+button{
+  font-family:"IBM Plex Sans",sans-serif; font-size:13.5px; font-weight:500;
+  padding:9px 16px; border-radius:3px; border:1px solid var(--line-strong);
+  background:var(--surface-2); color:var(--ink); cursor:pointer;
+}
+button:hover{border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] button.primary,
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#07171a}}
+button.primary:hover{opacity:.9}
+button.quiet{background:transparent; border-color:transparent; color:var(--muted)}
+.preview{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--muted); margin-left:auto}
+
+/* ---- tableau ---- */
+.tablewrap{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:13px}
+th{
+  text-align:left; font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--faint); font-weight:600; padding:9px 10px; border-bottom:1px solid var(--line);
+  white-space:nowrap; background:var(--surface-2);
+}
+td{padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap}
+td.n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.r-pos{color:var(--win); font-weight:600}
+.r-neg{color:var(--loss); font-weight:600}
+.dir{font-size:10.5px; font-weight:600; letter-spacing:.04em; padding:2px 6px; border-radius:2px}
+.dir.a{background:var(--win-soft); color:var(--win)}
+.dir.v{background:var(--loss-soft); color:var(--loss)}
+.del{background:none; border:0; color:var(--faint); cursor:pointer; padding:2px 6px; font-size:15px; line-height:1}
+.del:hover{color:var(--loss)}
+
+/* ---- courbe ---- */
+.curve{padding:16px 18px}
+svg{display:block; width:100%; height:auto; max-width:100%}
+
+.banner{
+  margin-top:16px; padding:11px 14px; border-radius:4px; font-size:13px;
+  background:var(--warn-soft); color:var(--warn); border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);
+}
+.empty{padding:28px 18px; text-align:center; color:var(--muted); font-size:13.5px}
+footer{margin-top:28px; padding-top:18px; border-top:1px solid var(--line); font-size:12px; color:var(--faint)}
+footer p{margin:0 0 7px; max-width:70ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<div class="top">
+  <div class="top-in">
+    <div class="mark">Carnet de bord <span>XAUUSD</span></div>
+    <div class="top-stat">Capital <b id="t-eq">450,00 $</b></div>
+    <div class="top-stat">Trades <b id="t-n">0</b></div>
+    <div class="top-stat" id="t-store">local</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section class="verdict">
+    <div class="eyebrow">Ce que disent tes trades</div>
+    <h2 id="v-title">Pas encore de quoi conclure</h2>
+    <p id="v-text">Saisis tes trades au fur et à mesure. Ce bloc te dira quand tu auras assez de données pour distinguer ton espérance de zéro — et pas avant.</p>
+
+    <div class="ic">
+      <div class="eyebrow" style="margin-bottom:4px">Espérance par trade, intervalle de confiance à 95%</div>
+      <div class="ic-scale" id="ic-scale">
+        <div class="ic-axis"></div>
+        <div class="ic-zero" id="ic-zero" style="left:50%"></div>
+        <div class="ic-band" id="ic-band" hidden></div>
+        <div class="ic-point" id="ic-point" hidden></div>
+      </div>
+      <div class="ic-legend"><span id="ic-lo">−1,0 R</span><span id="ic-hi">+1,0 R</span></div>
+    </div>
+
+    <div class="prog">
+      <div class="prog-head">
+        <span>Trades nécessaires pour conclure</span>
+        <b id="p-txt">— / —</b>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" id="p-fill"></div></div>
+      <div class="prog-note" id="p-note">Le nombre requis se calcule à partir de la dispersion observée de tes propres résultats. Il diminue si tes trades sont réguliers, il augmente s'ils sont dispersés.</div>
+    </div>
+  </section>
+
+  <dl class="tiles">
+    <div class="tile"><dt>Espérance</dt><dd id="s-exp">—</dd><small id="s-exp-s">en R par trade</small></div>
+    <div class="tile"><dt>Taux de réussite</dt><dd id="s-wr">—</dd><small id="s-wr-s">ne mesure pas l'edge</small></div>
+    <div class="tile"><dt>Slippage médian</dt><dd id="s-slip">—</dd><small id="s-slip-s">écart au prix du signal</small></div>
+    <div class="tile"><dt>Résultat cumulé</dt><dd id="s-pnl">—</dd><small id="s-pnl-s">frais inclus dans tes prix</small></div>
+  </dl>
+
+  <section class="limits">
+    <div class="eyebrow">Limites du jour — fixées avant de trader</div>
+    <div class="lim-row"><span class="lim-name">Trades aujourd'hui</span><span class="lim-val" id="l-n">0 / 3</span><span class="pill ok" id="l-n-p">OK</span></div>
+    <div class="lim-row"><span class="lim-name">Pertes consécutives</span><span class="lim-val" id="l-c">0 / 2</span><span class="pill ok" id="l-c-p">OK</span></div>
+    <div class="lim-row"><span class="lim-name">Résultat du jour</span><span class="lim-val" id="l-d">0,0 %</span><span class="pill ok" id="l-d-p">OK</span></div>
+    <div class="lim-row"><span class="lim-name">Capital depuis le départ</span><span class="lim-val" id="l-t">0,0 %</span><span class="pill ok" id="l-t-p">OK</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h3>Nouveau trade</h3><span class="preview" id="prev">—</span></div>
+    <div class="grid">
+      <div><label for="f-date">Date et heure</label><input type="datetime-local" id="f-date"></div>
+      <div><label for="f-dir">Sens</label><select id="f-dir"><option value="1">Achat</option><option value="-1">Vente</option></select></div>
+      <div><label for="f-lot">Lot</label><input type="number" id="f-lot" step="0.01" min="0.01" value="0.01"></div>
+      <div><label for="f-sig">Prix du signal</label><input type="number" id="f-sig" step="0.01" placeholder="4322.32"><div class="hint">Celui affiché par le scanner</div></div>
+      <div><label for="f-ent">Entrée réelle</label><input type="number" id="f-ent" step="0.01" placeholder="4322.55"><div class="hint">Celui que tu as obtenu</div></div>
+      <div><label for="f-sl">Stop</label><input type="number" id="f-sl" step="0.01" placeholder="4327.98"></div>
+      <div><label for="f-tp">Objectif</label><input type="number" id="f-tp" step="0.01" placeholder="4306.03"></div>
+      <div><label for="f-out">Prix de sortie</label><input type="number" id="f-out" step="0.01" placeholder="4306.03"></div>
+      <div><label for="f-why">Motif de sortie</label><select id="f-why">
+        <option>Objectif</option><option>Stop</option><option>Durée max</option><option>Sortie manuelle</option>
+      </select></div>
+      <div style="grid-column:1/-1"><label for="f-note">Note</label><textarea id="f-note" placeholder="Confirmation utilisée, contexte, ce que tu referais autrement."></textarea></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="add">Enregistrer le trade</button>
+      <button class="quiet" id="clearform">Vider</button>
+    </div>
+  </section>
+
+  <section class="panel" id="curvepanel" hidden>
+    <div class="panel-head"><h3>Courbe de capital</h3></div>
+    <div class="curve" id="curve"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h3>Trades</h3><button class="quiet" id="wipe">Tout effacer</button></div>
+    <div id="demo-banner" class="banner" style="margin:14px 18px 0" hidden>Trois trades d'exemple, pour que tu voies à quoi ressemble le carnet rempli. Ils disparaissent dès ton premier enregistrement.</div>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th>Date</th><th>Sens</th><th>Signal</th><th>Entrée</th><th>Slip.</th>
+        <th>Stop</th><th>Sortie</th><th>R</th><th>$</th><th>Motif</th><th></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <div class="empty" id="empty" hidden>Aucun trade enregistré.</div>
+  </section>
+
+  <footer>
+    <p><b>Comment le R est calculé.</b> R = (sortie − entrée) × sens ÷ |entrée − stop|. C'est ton gain exprimé en multiples du risque pris. Un stop touché vaut −1 R quelle que soit sa taille en dollars, ce qui rend les trades comparables entre eux.</p>
+    <p><b>Pourquoi le slippage est une colonne à part.</b> C'est la seule chose qu'un backtest ne peut pas mesurer. Sur un stop de 5 points, une espérance de +0,10 R vaut 0,50 point : entrer un demi-point trop loin l'annule entièrement. Si ton slippage médian dépasse 0,5 point, le système n'est pas exécutable à la main.</p>
+    <p><b>Pourquoi le taux de réussite est marqué comme ne mesurant rien.</b> Sur 436 jours de données réelles, ce système affichait 60 % de trades gagnants avec une espérance indistinguable du hasard. Le taux de réussite décrit la forme de tes sorties, pas la qualité de tes entrées.</p>
+    <p id="store-note"></p>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const CAP = 450;
+const fmt = (v, d = 2) => v.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = v => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
+
+/* ---------- donnees d'exemple, clairement identifiees ---------- */
+const DEMO = [
+  {id:"d1", ts:"2026-09-15T09:35", dir:-1, lot:0.01, sig:4322.32, ent:4322.55, sl:4327.98, tp:4306.03, out:4327.98, why:"Stop", note:"Mèche de rejet en M5, force H1 faible. Entrée 0,23 point au-dessus du signal.", demo:true},
+  {id:"d2", ts:"2026-09-15T13:10", dir:1,  lot:0.01, sig:4310.80, ent:4310.88, sl:4306.12, tp:4324.84, out:4324.84, why:"Objectif", note:"Englobante nette à l'ouverture US.", demo:true},
+  {id:"d3", ts:"2026-09-16T10:05", dir:-1, lot:0.01, sig:4351.40, ent:4351.77, sl:4356.02, tp:4338.53, out:4349.10, why:"Durée max", note:"Mouvement mou, sorti au bout de 4 h sans rien.", demo:true}
+];
+
+let trades = [];
+let db = null, docref = null;
+
+/* ---------- calculs ---------- */
+function enrich(t){
+  const risk = Math.abs(t.ent - t.sl);
+  const R = risk > 0 ? (t.out - t.ent) * t.dir / risk : 0;
+  const slip = (t.ent - t.sig) * t.dir;          // positif = entree defavorable
+  const usd = (t.out - t.ent) * t.dir * t.lot * 100;
+  return {...t, risk, R, slip, usd};
+}
+function stats(list){
+  const n = list.length;
+  if (!n) return {n:0};
+  const Rs = list.map(t => t.R);
+  const mean = Rs.reduce((a,b)=>a+b,0)/n;
+  const sd = n > 1 ? Math.sqrt(Rs.reduce((a,b)=>a+(b-mean)**2,0)/(n-1)) : 0;
+  const se = n > 1 ? sd/Math.sqrt(n) : 0;
+  const slips = list.map(t=>t.slip).sort((a,b)=>a-b);
+  const medSlip = slips[Math.floor(n/2)];
+  const usd = list.reduce((a,t)=>a+t.usd,0);
+  // effectif requis pour distinguer l'esperance observee de zero a 95%
+  const need = (sd > 0 && Math.abs(mean) > 1e-6)
+    ? Math.ceil((1.96*sd/Math.abs(mean))**2) : null;
+  return {n, mean, sd, se, lo:mean-1.96*se, hi:mean+1.96*se,
+          wr: list.filter(t=>t.R>0).length/n*100, medSlip, usd, need};
+}
+
+/* ---------- rendu ---------- */
+function render(){
+  const isDemo = trades.length === 0;
+  const list = (isDemo ? DEMO : trades).map(enrich);
+  $("demo-banner").hidden = !isDemo;
+  const s = stats(list);
+
+  $("t-n").textContent = isDemo ? "0" : s.n;
+  $("t-eq").textContent = fmt(CAP + (isDemo ? 0 : s.usd)) + " $";
+
+  // tuiles
+  $("s-exp").textContent = s.n > 1 ? sgn(s.mean) + " R" : "—";
+  $("s-wr").textContent = s.n ? fmt(s.wr,1) + " %" : "—";
+  $("s-slip").textContent = s.n ? sgn(s.medSlip) + " pt" : "—";
+  $("s-slip-s").textContent = s.n
+    ? (Math.abs(s.medSlip) > 0.5 ? "au-delà de 0,5 pt : non exécutable à la main" : "écart au prix du signal")
+    : "écart au prix du signal";
+  $("s-pnl").textContent = s.n ? sgn(s.usd) + " $" : "—";
+  $("s-pnl-s").textContent = s.n ? fmt(s.usd/CAP*100,1) + " % du capital" : "frais inclus dans tes prix";
+
+  // intervalle de confiance
+  const band = $("ic-band"), pt = $("ic-point");
+  if (s.n > 2 && s.se > 0){
+    const span = Math.max(Math.abs(s.lo), Math.abs(s.hi), 0.3) * 1.25;
+    const pct = v => (v + span) / (2*span) * 100;
+    band.hidden = pt.hidden = false;
+    band.style.left = pct(s.lo) + "%";
+    band.style.width = Math.max(pct(s.hi) - pct(s.lo), 0.7) + "%";
+    pt.style.left = pct(s.mean) + "%";
+    $("ic-zero").style.left = pct(0) + "%";
+    $("ic-lo").textContent = sgn(-span) + " R";
+    $("ic-hi").textContent = sgn(span) + " R";
+
+    const zeroDedans = s.lo <= 0 && s.hi >= 0;
+    if (zeroDedans){
+      $("v-title").textContent = "Zéro est dans l'intervalle";
+      $("v-text").textContent = "Ton espérance se situe entre " + sgn(s.lo) + " R et " + sgn(s.hi)
+        + " R. L'intervalle contient zéro, donc tes résultats restent compatibles avec l'absence totale d'edge. "
+        + "Ça ne veut pas dire que tu n'en as pas — seulement que tu ne peux pas encore le démontrer.";
+    } else if (s.lo > 0){
+      $("v-title").textContent = "Espérance positive, zéro exclu";
+      $("v-text").textContent = "L'intervalle va de " + sgn(s.lo) + " R à " + sgn(s.hi)
+        + " R et ne contient pas zéro. C'est le premier signe sérieux. À confirmer sur la suite : "
+        + "un intervalle qui exclut zéro une fois peut le réintégrer au trade suivant.";
+    } else {
+      $("v-title").textContent = "Espérance négative, zéro exclu";
+      $("v-text").textContent = "L'intervalle va de " + sgn(s.lo) + " R à " + sgn(s.hi)
+        + " R, entièrement sous zéro. Ce que tu trades te coûte de l'argent de façon mesurable. "
+        + "Arrête et reprends la méthode plutôt que la taille.";
+    }
+  } else {
+    band.hidden = pt.hidden = true;
+    $("ic-zero").style.left = "50%";
+    $("ic-lo").textContent = "−1,0 R"; $("ic-hi").textContent = "+1,0 R";
+    $("v-title").textContent = "Pas encore de quoi conclure";
+    $("v-text").textContent = "Il faut au moins trois trades pour calculer un intervalle. "
+      + "Saisis-les au fur et à mesure, pas de mémoire en fin de semaine.";
+  }
+
+  // progression vers la conclusion
+  if (s.n > 2 && s.need){
+    const need = Math.min(s.need, 99999);
+    $("p-txt").textContent = s.n + " / " + need.toLocaleString("fr-FR");
+    $("p-fill").style.width = Math.min(s.n/need*100, 100) + "%";
+    const jours = Math.ceil((need - s.n) / 3);
+    $("p-note").textContent = need <= s.n
+      ? "Tu as l'effectif nécessaire pour conclure sur l'espérance observée."
+      : "Au rythme de 3 trades par jour, il te reste environ " + jours.toLocaleString("fr-FR")
+        + " jours de bourse. Ce nombre bouge à chaque trade : il dépend de ta dispersion et de la taille de ton espérance.";
+  } else {
+    $("p-txt").textContent = "— / —";
+    $("p-fill").style.width = "0";
+  }
+
+  // limites
+  const today = new Date().toISOString().slice(0,10);
+  const real = isDemo ? [] : list;
+  const dj = real.filter(t => (t.ts||"").slice(0,10) === today);
+  const pnlJour = dj.reduce((a,t)=>a+t.usd,0);
+  let streak = 0;
+  for (let i = real.length-1; i >= 0 && real[i].R < 0; i--) streak++;
+  const totPct = s.n ? s.usd/CAP*100 : 0;
+
+  const set = (idV, idP, txt, lvl) => {
+    $(idV).textContent = txt;
+    const p = $(idP);
+    p.className = "pill " + lvl;
+    p.textContent = lvl === "ok" ? "OK" : lvl === "near" ? "Limite" : "Stop";
+  };
+  set("l-n","l-n-p", dj.length + " / 3", dj.length >= 3 ? "stop" : dj.length === 2 ? "near" : "ok");
+  set("l-c","l-c-p", streak + " / 2", streak >= 2 ? "stop" : streak === 1 ? "near" : "ok");
+  set("l-d","l-d-p", fmt(pnlJour/CAP*100,1) + " %", pnlJour/CAP*100 <= -3 ? "stop" : pnlJour/CAP*100 <= -2 ? "near" : "ok");
+  set("l-t","l-t-p", fmt(totPct,1) + " %", totPct <= -25 ? "stop" : totPct <= -15 ? "near" : "ok");
+
+  // tableau
+  const tb = $("rows");
+  tb.textContent = "";
+  list.forEach(t => {
+    const tr = document.createElement("tr");
+    const cell = (txt, cls) => {
+      const td = document.createElement("td");
+      if (cls) td.className = cls;
+      td.textContent = txt;
+      return td;
+    };
+    tr.append(cell(t.ts ? t.ts.replace("T"," ") : "—"));
+    const dtd = document.createElement("td");
+    const sp = document.createElement("span");
+    sp.className = "dir " + (t.dir > 0 ? "a" : "v");
+    sp.textContent = t.dir > 0 ? "Achat" : "Vente";
+    dtd.append(sp); tr.append(dtd);
+    tr.append(cell(fmt(t.sig), "n"), cell(fmt(t.ent), "n"), cell(sgn(t.slip), "n"),
+              cell(fmt(t.sl), "n"), cell(fmt(t.out), "n"));
+    tr.append(cell(sgn(t.R) + " R", "n " + (t.R >= 0 ? "r-pos" : "r-neg")));
+    tr.append(cell(sgn(t.usd) + " $", "n"), cell(t.why));
+    const atd = document.createElement("td");
+    if (!t.demo){
+      const b = document.createElement("button");
+      b.className = "del"; b.textContent = "×";
+      b.setAttribute("aria-label", "Supprimer ce trade");
+      b.onclick = () => { trades = trades.filter(x => x.id !== t.id); save(); };
+      atd.append(b);
+    }
+    tr.append(atd);
+    tb.append(tr);
+  });
+  $("empty").hidden = list.length > 0;
+
+  drawCurve(list);
+}
+
+function drawCurve(list){
+  const box = $("curve");
+  $("curvepanel").hidden = list.length < 2;
+  if (list.length < 2) return;
+  const W = 640, H = 150, P = 26;
+  let eq = CAP; const pts = [{i:0, v:CAP}];
+  list.forEach((t,i) => { eq += t.usd; pts.push({i:i+1, v:eq}); });
+  const vs = pts.map(p => p.v);
+  const lo = Math.min(...vs), hi = Math.max(...vs);
+  const pad = (hi - lo) * 0.15 || 5;
+  const y = v => H - P - (v - (lo-pad)) / ((hi+pad) - (lo-pad)) * (H - 2*P);
+  const x = i => P + i / (pts.length - 1) * (W - 2*P);
+  const d = pts.map((p,k) => (k ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  const last = pts[pts.length-1];
+  const col = last.v >= CAP ? "var(--win)" : "var(--loss)";
+  box.innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Courbe de capital">' +
+      '<line x1="' + P + '" x2="' + (W-P) + '" y1="' + y(CAP).toFixed(1) + '" y2="' + y(CAP).toFixed(1) +
+        '" stroke="var(--line-strong)" stroke-dasharray="3 3" fill="none"/>' +
+      '<text x="' + P + '" y="' + (y(CAP)-6).toFixed(1) + '" fill="var(--faint)" font-size="10" ' +
+        'font-family="IBM Plex Mono, monospace">départ ' + CAP + ' $</text>' +
+      '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" ' +
+        'stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + x(last.i).toFixed(1) + '" cy="' + y(last.v).toFixed(1) + '" r="3.5" fill="' + col + '"/>' +
+      '<text x="' + (W-P) + '" y="' + (y(last.v)-9).toFixed(1) + '" text-anchor="end" fill="' + col +
+        '" font-size="11" font-weight="600" font-family="IBM Plex Mono, monospace">' +
+        fmt(last.v) + ' $</text>' +
+    '</svg>';
+}
+
+/* ---------- persistance ---------- */
+function localSave(){
+  try { localStorage.setItem("journal-xauusd", JSON.stringify(trades)); } catch (e) {}
+}
+function localLoad(){
+  try { const r = localStorage.getItem("journal-xauusd"); if (r) trades = JSON.parse(r) || []; } catch (e) {}
+}
+async function save(){
+  localSave();
+  render();
+  if (docref) { try { await docref.set({trades}); } catch (e) {} }
+}
+
+/* ---------- saisie ---------- */
+function readForm(){
+  const num = id => parseFloat($(id).value);
+  const t = {
+    id: "t" + Date.now(),
+    ts: $("f-date").value,
+    dir: parseInt($("f-dir").value, 10),
+    lot: num("f-lot"),
+    sig: num("f-sig"), ent: num("f-ent"), sl: num("f-sl"),
+    tp: num("f-tp"), out: num("f-out"),
+    why: $("f-why").value, note: $("f-note").value.trim()
+  };
+  const need = ["ent","sl","out"];
+  if (need.some(k => !isFinite(t[k]))) return null;
+  if (!isFinite(t.sig)) t.sig = t.ent;
+  if (!isFinite(t.tp)) t.tp = t.out;
+  if (!isFinite(t.lot) || t.lot <= 0) t.lot = 0.01;
+  if (!t.ts) t.ts = new Date().toISOString().slice(0,16);
+  if (Math.abs(t.ent - t.sl) < 1e-9) return null;
+  return t;
+}
+function updatePreview(){
+  const t = readForm();
+  if (!t) { $("prev").textContent = "—"; return; }
+  const e = enrich(t);
+  $("prev").textContent = sgn(e.R) + " R   " + sgn(e.usd) + " $   slip " + sgn(e.slip) + " pt";
+}
+["f-dir","f-lot","f-sig","f-ent","f-sl","f-tp","f-out"].forEach(id =>
+  $(id).addEventListener("input", updatePreview));
+
+$("add").onclick = () => {
+  const t = readForm();
+  if (!t){
+    $("prev").textContent = "Entrée, stop et sortie sont nécessaires";
+    return;
+  }
+  trades.push(t);
+  ["f-sig","f-ent","f-sl","f-tp","f-out","f-note"].forEach(id => $(id).value = "");
+  $("prev").textContent = "—";
+  $("f-date").value = new Date().toISOString().slice(0,16);
+  save();
+};
+$("clearform").onclick = () => {
+  ["f-sig","f-ent","f-sl","f-tp","f-out","f-note"].forEach(id => $(id).value = "");
+  $("prev").textContent = "—";
+};
+$("wipe").onclick = () => {
+  if (!trades.length) return;
+  if (confirm("Effacer les " + trades.length + " trades enregistrés ? C'est définitif.")){
+    trades = []; save();
+  }
+};
+
+/* ---------- demarrage ---------- */
+$("f-date").value = new Date().toISOString().slice(0,16);
+localLoad();
+render();
+
+(async () => {
+  const d = await (window.claude?.use?.("db") ?? Promise.resolve(null));
+  if (!d){
+    $("t-store").textContent = "stockage local";
+    $("store-note").textContent = "Tes trades sont enregistrés dans ce navigateur uniquement. "
+      + "Ils ne suivent pas d'un appareil à l'autre et disparaissent si tu effaces les données du site.";
+    return;
+  }
+  db = d;
+  docref = db.doc("journal/xauusd");
+  try {
+    const snap = await docref.get();
+    const dist = snap?.data?.trades;
+    if (Array.isArray(dist) && dist.length >= trades.length){ trades = dist; }
+    else if (trades.length) { await docref.set({trades}); }
+    localSave();
+    render();
+    $("t-store").textContent = "synchronisé";
+    $("store-note").textContent = "Tes trades sont enregistrés durablement et suivent d'un appareil à l'autre. "
+      + "Je peux les relire pour analyser ton forward test quand tu me le demanderas.";
+  } catch (e) {
+    $("t-store").textContent = "stockage local";
+  }
+})();
+</script>
