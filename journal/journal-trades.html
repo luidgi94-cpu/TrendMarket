@@ -249,6 +249,11 @@ footer p{margin:0 0 7px; max-width:70ch}
         <input type="number" id="f-ppp" step="1" min="0.01" value="100">
         <div class="hint">100 sur XAUUSD</div>
       </div>
+      <div style="flex:1; min-width:110px">
+        <label for="f-lotmin">Lot minimum</label>
+        <input type="number" id="f-lotmin" step="0.001" min="0.001" value="0.01">
+        <div class="hint">0,001 chez XTB</div>
+      </div>
     </div>
     <div class="lim-row" style="gap:10px; border-top:0; padding-top:12px">
       <button id="acc-new">Ajouter un compte</button>
@@ -291,7 +296,9 @@ footer p{margin:0 0 7px; max-width:70ch}
     <div class="grid">
       <div><label for="f-date">Date et heure</label><input type="datetime-local" id="f-date"></div>
       <div><label for="f-dir">Sens</label><select id="f-dir"><option value="1">Achat</option><option value="-1">Vente</option></select></div>
-      <div><label for="f-lot">Lot</label><input type="number" id="f-lot" step="0.01" min="0.01" value="0.01"></div>
+      <div><label for="f-lot">Lot</label>
+        <input type="number" id="f-lot" step="0.001" min="0.001" value="0.01">
+        <div class="hint">0,01 chez la plupart des courtiers, 0,001 chez XTB</div></div>
       <div><label for="f-sig">Prix du signal</label><input type="number" id="f-sig" step="0.01" placeholder="4322.32"><div class="hint">Celui affiché par le scanner</div></div>
       <div><label for="f-ent">Entrée réelle</label><input type="number" id="f-ent" step="0.01" placeholder="4322.55"><div class="hint">Celui que tu as obtenu</div></div>
       <div><label for="f-sl">Stop</label><input type="number" id="f-sl" step="0.01" placeholder="4327.98"></div>
@@ -342,7 +349,7 @@ footer p{margin:0 0 7px; max-width:70ch}
 
   <footer>
     <p><b>Comment le R est calculé.</b> R = (sortie − entrée) × sens ÷ |entrée − stop|. C'est ton gain exprimé en multiples du risque pris. Un stop touché vaut −1 R quelle que soit sa taille en dollars, ce qui rend les trades comparables entre eux.</p>
-    <p><b>Pourquoi le slippage est une colonne à part.</b> C'est la seule chose qu'un backtest ne peut pas mesurer. Sur un stop de 5 points, une espérance de +0,10 R vaut 0,50 point : entrer un demi-point trop loin l'annule entièrement. Si ton slippage médian dépasse 0,5 point, le système n'est pas exécutable à la main.</p>
+    <p><b>Pourquoi le slippage est une colonne à part.</b> C'est la seule chose qu'un backtest ne peut pas mesurer, et elle ne dépend ni de ton capital ni de ton lot. Sur un stop de 5 points, une espérance de +0,10 R vaut 0,50 point : entrer un demi-point trop loin l'annule entièrement. Si ton slippage médian dépasse 0,5 point, le système n'est pas exécutable à la main.</p>
     <p><b>Pourquoi le taux de réussite est marqué comme ne mesurant rien.</b> Sur 436 jours de données réelles, ce système affichait 60 % de trades gagnants avec une espérance indistinguable du hasard. Le taux de réussite décrit la forme de tes sorties, pas la qualité de tes entrées.</p>
     <p id="store-note"></p>
   </footer>
@@ -359,9 +366,9 @@ const sgn = (v, d = 2) => (v >= 0 ? "+" : "−") + fmt(Math.abs(v), d);
 const defauts = () => ({
   courant: "vt",
   comptes: [
-    {id:"vt",   nom:"VT Markets", cap:450, cur:"€", ppp:100, demo:false, trades:[]},
-    {id:"demo", nom:"Démo",       cap:450, cur:"€", ppp:100, demo:true,  trades:[]},
-    {id:"xtb",  nom:"XTB",        cap:20,  cur:"€", ppp:100, demo:false, trades:[]}
+    {id:"vt",   nom:"VT Markets", cap:450, cur:"€", ppp:100, lotmin:0.01,  demo:false, trades:[]},
+    {id:"demo", nom:"Démo",       cap:450, cur:"€", ppp:100, lotmin:0.01,  demo:true,  trades:[]},
+    {id:"xtb",  nom:"XTB",        cap:20,  cur:"€", ppp:100, lotmin:0.001, demo:false, trades:[]}
   ]
 });
 let data = defauts();
@@ -431,6 +438,7 @@ function render(){
   $("f-cap").value = c.cap;
   $("f-cur").value = c.cur;
   $("f-ppp").value = c.ppp;
+  $("f-lotmin").value = c.lotmin ?? 0.01;
   $("acc-del").disabled = data.comptes.length < 2;
 
   const exemple = c.trades.length === 0;
@@ -530,13 +538,19 @@ function render(){
       totPct <= -25 ? "stop" : totPct <= -15 ? "near" : "ok");
 
   // taille de compte : le risque ne depend pas du capital mais du stop
+  // Le lot de reference est celui que l'utilisateur trade vraiment, pris sur
+  // la mediane de ses trades ; a defaut le lot minimum declare pour ce
+  // compte. Le supposer a 0,01 menait a surestimer le risque d'un facteur
+  // dix chez un courtier qui descend a 0,001.
   const stopMed = med(list.filter(x => x.risk > 0).map(x => x.risk)) || 5.68;
-  const risque = stopMed * 0.01 * c.ppp;
+  const lotRef = (!exemple && list.length ? med(list.map(x => x.lot)) : null)
+                 || c.lotmin || 0.01;
+  const risque = stopMed * lotRef * c.ppp;
   const pctR = risque / c.cap * 100;
   const w = $("cap-warn");
   if (pctR > 5){
     w.hidden = false;
-    w.textContent = "Au lot minimum de 0,01 et avec un stop médian de " + fmt(stopMed)
+    w.textContent = "Au lot de " + fmt(lotRef, 3) + " et avec un stop médian de " + fmt(stopMed)
       + " points, chaque trade risque " + fmt(risque) + " " + c.cur + ", soit "
       + fmt(pctR,1) + " % de " + fmt(c.cap,0) + " " + c.cur + ". "
       + Math.ceil(100/pctR) + " pertes consécutives suffisent à effacer le compte, alors "
@@ -827,14 +841,25 @@ $("wipe").onclick = () => {
 };
 
 /* ---------- comptes ---------- */
-$("acc-sel").onchange = e => { data.courant = e.target.value; save(); };
-["f-name","f-cap","f-cur","f-ppp"].forEach(id =>
+$("acc-sel").onchange = e => {
+  data.courant = e.target.value;
+  // le lot propose suit le courtier selectionne
+  const c = cpt();
+  const dernier = c.trades.length ? c.trades[c.trades.length-1].lot : null;
+  $("f-lot").value = dernier || c.lotmin || 0.01;
+  save();
+};
+["f-name","f-cap","f-cur","f-ppp","f-lotmin"].forEach(id =>
   $(id).addEventListener("input", () => {
     const c = cpt();
     if (id === "f-name") c.nom = $("f-name").value || "Compte";
     if (id === "f-cur")  c.cur = $("f-cur").value;
     if (id === "f-cap"){ const v = parseFloat($("f-cap").value); if (isFinite(v) && v > 0) c.cap = v; }
     if (id === "f-ppp"){ const v = parseFloat($("f-ppp").value); if (isFinite(v) && v > 0) c.ppp = v; }
+    if (id === "f-lotmin"){
+      const v = parseFloat($("f-lotmin").value);
+      if (isFinite(v) && v > 0){ c.lotmin = v; $("f-lot").value = v; }
+    }
     localSave(); render();
     if (docref) docref.set(data).catch(() => {});
   }));
@@ -844,6 +869,7 @@ $("acc-new").onclick = () => {
   const c = cpt();
   const id = "c" + Date.now();
   data.comptes.push({id, nom, cap:c.cap, cur:c.cur, ppp:c.ppp,
+                     lotmin:c.lotmin || 0.01,
                      demo:/d[ée]mo/i.test(nom), trades:[]});
   data.courant = id;
   save();
