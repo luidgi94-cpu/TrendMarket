@@ -187,6 +187,7 @@ footer p{margin:0 0 7px; max-width:70ch}
 <div class="top">
   <div class="top-in">
     <div class="mark">Carnet de bord <span>XAUUSD</span></div>
+    <select id="acc-sel" aria-label="Compte" style="width:auto; padding:5px 8px; font-size:13px"></select>
     <div class="top-stat">Capital <b id="t-eq">—</b></div>
     <div class="top-stat">Trades <b id="t-n">0</b></div>
     <div class="top-stat" id="t-store">local</div>
@@ -229,8 +230,12 @@ footer p{margin:0 0 7px; max-width:70ch}
   </dl>
 
   <section class="limits">
-    <div class="eyebrow">Compte</div>
+    <div class="eyebrow">Réglages du compte sélectionné</div>
     <div class="lim-row" style="gap:12px; flex-wrap:wrap">
+      <div style="flex:2; min-width:130px">
+        <label for="f-name">Nom</label>
+        <input type="text" id="f-name" style="font-family:inherit">
+      </div>
       <div style="flex:1; min-width:110px">
         <label for="f-cap">Capital de départ</label>
         <input type="number" id="f-cap" step="1" min="1" value="450">
@@ -245,12 +250,30 @@ footer p{margin:0 0 7px; max-width:70ch}
         <div class="hint">100 sur XAUUSD</div>
       </div>
     </div>
+    <div class="lim-row" style="gap:10px; border-top:0; padding-top:12px">
+      <button id="acc-new">Ajouter un compte</button>
+      <button id="acc-del" class="quiet">Supprimer ce compte</button>
+    </div>
     <div id="cap-warn" class="banner" style="margin:12px 0 4px" hidden></div>
     <div class="eyebrow" style="margin-top:18px">Limites du jour — fixées avant de trader</div>
     <div class="lim-row"><span class="lim-name">Trades aujourd'hui</span><span class="lim-val" id="l-n">0 / 3</span><span class="pill ok" id="l-n-p">OK</span></div>
     <div class="lim-row"><span class="lim-name">Pertes consécutives</span><span class="lim-val" id="l-c">0 / 2</span><span class="pill ok" id="l-c-p">OK</span></div>
     <div class="lim-row"><span class="lim-name">Résultat du jour</span><span class="lim-val" id="l-d">0,0 %</span><span class="pill ok" id="l-d-p">OK</span></div>
     <div class="lim-row"><span class="lim-name">Capital depuis le départ</span><span class="lim-val" id="l-t">0,0 %</span><span class="pill ok" id="l-t-p">OK</span></div>
+  </section>
+
+  <section class="panel" id="cmp-panel" hidden>
+    <div class="panel-head"><h3>Démo contre réel</h3></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Compte</th><th>Trades</th><th>Slippage médian</th><th>Espérance</th><th>Écart à la démo</th></tr></thead>
+      <tbody id="cmp-rows"></tbody>
+    </table></div>
+    <p style="margin:0; padding:14px 18px 18px; font-size:12.5px; color:var(--muted); max-width:70ch">
+      La démo remplit presque toujours mieux que le réel. La colonne de droite chiffre ce
+      que ton exécution réelle coûte par rapport à ce que la démo te laissait croire :
+      c'est le seul moyen de savoir si un système exécutable en démo l'est aussi avec de
+      l'argent.
+    </p>
   </section>
 
   <section class="panel">
@@ -304,48 +327,39 @@ footer p{margin:0 0 7px; max-width:70ch}
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-let CAP = 450, CUR = "$", PPP = 100;
-function readCap(){
-  const c = parseFloat($("f-cap").value);
-  const v = parseFloat($("f-ppp").value);
-  CAP = isFinite(c) && c > 0 ? c : 450;
-  PPP = isFinite(v) && v > 0 ? v : 100;
-  CUR = $("f-cur").value;
-  try { localStorage.setItem("journal-compte", JSON.stringify({CAP, CUR, PPP})); } catch (e) {}
-}
-function loadCap(){
-  try {
-    const r = localStorage.getItem("journal-compte");
-    if (r){
-      const o = JSON.parse(r);
-      if (o.CAP) $("f-cap").value = o.CAP;
-      if (o.PPP) $("f-ppp").value = o.PPP;
-      if (o.CUR) $("f-cur").value = o.CUR;
-    }
-  } catch (e) {}
-  readCap();
-}
-const fmt = (v, d = 2) => v.toLocaleString("fr-FR", {minimumFractionDigits: d, maximumFractionDigits: d});
-const sgn = v => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
+const fmt = (v, d = 2) => (isFinite(v) ? v : 0).toLocaleString("fr-FR",
+  {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => (v >= 0 ? "+" : "−") + fmt(Math.abs(v), d);
 
-/* ---------- donnees d'exemple, clairement identifiees ---------- */
+/* ---------- modele : un carnet par compte ---------- */
+const defauts = () => ({
+  courant: "vt",
+  comptes: [
+    {id:"vt",   nom:"VT Markets", cap:450, cur:"€", ppp:100, demo:false, trades:[]},
+    {id:"demo", nom:"Démo",       cap:450, cur:"€", ppp:100, demo:true,  trades:[]},
+    {id:"xtb",  nom:"XTB",        cap:20,  cur:"€", ppp:100, demo:false, trades:[]}
+  ]
+});
+let data = defauts();
+const cpt = () => data.comptes.find(c => c.id === data.courant) || data.comptes[0];
+
+/* ---------- trades d'exemple, clairement identifies ---------- */
 const DEMO = [
-  {id:"d1", ts:"2026-09-15T09:35", dir:-1, lot:0.01, sig:4322.32, ent:4322.55, sl:4327.98, tp:4306.03, out:4327.98, why:"Stop", note:"Mèche de rejet en M5, force H1 faible. Entrée 0,23 point au-dessus du signal.", demo:true},
-  {id:"d2", ts:"2026-09-15T13:10", dir:1,  lot:0.01, sig:4310.80, ent:4310.88, sl:4306.12, tp:4324.84, out:4324.84, why:"Objectif", note:"Englobante nette à l'ouverture US.", demo:true},
-  {id:"d3", ts:"2026-09-16T10:05", dir:-1, lot:0.01, sig:4351.40, ent:4351.77, sl:4356.02, tp:4338.53, out:4349.10, why:"Durée max", note:"Mouvement mou, sorti au bout de 4 h sans rien.", demo:true}
+  {id:"d1", ts:"2026-09-15T09:35", dir:-1, lot:0.01, sig:4322.32, ent:4322.55, sl:4327.98, tp:4306.03, out:4327.98, why:"Stop", note:"", demo:true},
+  {id:"d2", ts:"2026-09-15T13:10", dir:1,  lot:0.01, sig:4310.80, ent:4310.88, sl:4306.12, tp:4324.84, out:4324.84, why:"Objectif", note:"", demo:true},
+  {id:"d3", ts:"2026-09-16T10:05", dir:-1, lot:0.01, sig:4351.40, ent:4351.77, sl:4356.02, tp:4338.53, out:4349.10, why:"Durée max", note:"", demo:true}
 ];
 
-let trades = [];
-let db = null, docref = null;
-
 /* ---------- calculs ---------- */
-function enrich(t){
+function enrich(t, c){
   const risk = Math.abs(t.ent - t.sl);
   const R = risk > 0 ? (t.out - t.ent) * t.dir / risk : 0;
-  const slip = (t.ent - t.sig) * t.dir;          // positif = entree defavorable
-  const usd = (t.out - t.ent) * t.dir * t.lot * PPP;
-  return {...t, risk, R, slip, usd};
+  const slip = (t.ent - t.sig) * t.dir;        // positif = entree defavorable
+  const val = (t.out - t.ent) * t.dir * t.lot * c.ppp;
+  return {...t, risk, R, slip, val};
 }
+const med = a => a.length ? [...a].sort((x,y)=>x-y)[Math.floor(a.length/2)] : NaN;
+
 function stats(list){
   const n = list.length;
   if (!n) return {n:0};
@@ -353,65 +367,83 @@ function stats(list){
   const mean = Rs.reduce((a,b)=>a+b,0)/n;
   const sd = n > 1 ? Math.sqrt(Rs.reduce((a,b)=>a+(b-mean)**2,0)/(n-1)) : 0;
   const se = n > 1 ? sd/Math.sqrt(n) : 0;
-  const slips = list.map(t=>t.slip).sort((a,b)=>a-b);
-  const medSlip = slips[Math.floor(n/2)];
-  const usd = list.reduce((a,t)=>a+t.usd,0);
-  // effectif requis pour distinguer l'esperance observee de zero a 95%
-  const need = (sd > 0 && Math.abs(mean) > 1e-6)
-    ? Math.ceil((1.96*sd/Math.abs(mean))**2) : null;
   return {n, mean, sd, se, lo:mean-1.96*se, hi:mean+1.96*se,
-          wr: list.filter(t=>t.R>0).length/n*100, medSlip, usd, need};
+          wr: list.filter(t=>t.R>0).length/n*100,
+          medSlip: med(list.map(t=>t.slip)),
+          val: list.reduce((a,t)=>a+t.val,0),
+          need: (sd > 0 && Math.abs(mean) > 1e-6)
+            ? Math.ceil((1.96*sd/Math.abs(mean))**2) : null};
 }
 
 /* ---------- rendu ---------- */
 function render(){
-  const isDemo = trades.length === 0;
-  const list = (isDemo ? DEMO : trades).map(enrich);
-  $("demo-banner").hidden = !isDemo;
+  const c = cpt();
+
+  // selecteur
+  const sel = $("acc-sel");
+  sel.textContent = "";
+  data.comptes.forEach(k => {
+    const o = document.createElement("option");
+    o.value = k.id;
+    o.textContent = k.nom + (k.demo ? " (démo)" : "") + " · " + k.trades.length;
+    sel.append(o);
+  });
+  sel.value = c.id;
+
+  // champs du compte
+  $("f-name").value = c.nom;
+  $("f-cap").value = c.cap;
+  $("f-cur").value = c.cur;
+  $("f-ppp").value = c.ppp;
+  $("acc-del").disabled = data.comptes.length < 2;
+
+  const exemple = c.trades.length === 0;
+  const list = (exemple ? DEMO : c.trades).map(x => enrich(x, c));
+  $("demo-banner").hidden = !exemple;
   const s = stats(list);
 
-  $("t-n").textContent = isDemo ? "0" : s.n;
-  $("t-eq").textContent = fmt(CAP + (isDemo ? 0 : s.usd)) + " " + CUR;
+  $("t-n").textContent = exemple ? "0" : s.n;
+  $("t-eq").textContent = fmt(c.cap + (exemple ? 0 : s.val)) + " " + c.cur;
+  $("th-cur").textContent = c.cur;
 
-  // tuiles
   $("s-exp").textContent = s.n > 1 ? sgn(s.mean) + " R" : "—";
-  $("s-wr").textContent = s.n ? fmt(s.wr,1) + " %" : "—";
+  $("s-wr").textContent  = s.n ? fmt(s.wr,1) + " %" : "—";
   $("s-slip").textContent = s.n ? sgn(s.medSlip) + " pt" : "—";
-  $("s-slip-s").textContent = s.n
-    ? (Math.abs(s.medSlip) > 0.5 ? "au-delà de 0,5 pt : non exécutable à la main" : "écart au prix du signal")
+  $("s-slip-s").textContent = s.n && Math.abs(s.medSlip) > 0.5
+    ? "au-delà de 0,5 pt : non exécutable à la main"
     : "écart au prix du signal";
-  $("s-pnl").textContent = s.n ? sgn(s.usd) + " " + CUR : "—";
-  $("s-pnl-s").textContent = s.n ? fmt(s.usd/CAP*100,1) + " % du capital" : "frais inclus dans tes prix";
+  $("s-pnl").textContent = s.n ? sgn(s.val) + " " + c.cur : "—";
+  $("s-pnl-s").textContent = s.n ? fmt(s.val/c.cap*100,1) + " % du capital"
+                                 : "frais inclus dans tes prix";
 
   // intervalle de confiance
   const band = $("ic-band"), pt = $("ic-point");
   if (s.n > 2 && s.se > 0){
     const span = Math.max(Math.abs(s.lo), Math.abs(s.hi), 0.3) * 1.25;
-    const pct = v => (v + span) / (2*span) * 100;
+    const pc = v => (v + span) / (2*span) * 100;
     band.hidden = pt.hidden = false;
-    band.style.left = pct(s.lo) + "%";
-    band.style.width = Math.max(pct(s.hi) - pct(s.lo), 0.7) + "%";
-    pt.style.left = pct(s.mean) + "%";
-    $("ic-zero").style.left = pct(0) + "%";
-    $("ic-lo").textContent = sgn(-span) + " R";
-    $("ic-hi").textContent = sgn(span) + " R";
-
-    const zeroDedans = s.lo <= 0 && s.hi >= 0;
-    if (zeroDedans){
+    band.style.left = pc(s.lo) + "%";
+    band.style.width = Math.max(pc(s.hi) - pc(s.lo), 0.7) + "%";
+    pt.style.left = pc(s.mean) + "%";
+    $("ic-zero").style.left = pc(0) + "%";
+    $("ic-lo").textContent = sgn(-span,1) + " R";
+    $("ic-hi").textContent = sgn(span,1) + " R";
+    if (s.lo <= 0 && s.hi >= 0){
       $("v-title").textContent = "Zéro est dans l'intervalle";
-      $("v-text").textContent = "Ton espérance se situe entre " + sgn(s.lo) + " R et " + sgn(s.hi)
-        + " R. L'intervalle contient zéro, donc tes résultats restent compatibles avec l'absence totale d'edge. "
-        + "Ça ne veut pas dire que tu n'en as pas — seulement que tu ne peux pas encore le démontrer.";
+      $("v-text").textContent = "Ton espérance se situe entre " + sgn(s.lo) + " R et "
+        + sgn(s.hi) + " R. L'intervalle contient zéro : tes résultats restent compatibles "
+        + "avec l'absence totale d'edge. Ça ne veut pas dire que tu n'en as pas, seulement "
+        + "que tu ne peux pas encore le démontrer.";
     } else if (s.lo > 0){
       $("v-title").textContent = "Espérance positive, zéro exclu";
       $("v-text").textContent = "L'intervalle va de " + sgn(s.lo) + " R à " + sgn(s.hi)
-        + " R et ne contient pas zéro. C'est le premier signe sérieux. À confirmer sur la suite : "
+        + " R et ne contient pas zéro. Premier signe sérieux, à confirmer sur la suite : "
         + "un intervalle qui exclut zéro une fois peut le réintégrer au trade suivant.";
     } else {
       $("v-title").textContent = "Espérance négative, zéro exclu";
       $("v-text").textContent = "L'intervalle va de " + sgn(s.lo) + " R à " + sgn(s.hi)
-        + " R, entièrement sous zéro. Ce que tu trades te coûte de l'argent de façon mesurable. "
-        + "Arrête et reprends la méthode plutôt que la taille.";
+        + " R, entièrement sous zéro. Ce que tu trades te coûte de l'argent de façon "
+        + "mesurable. Arrête et reprends la méthode, pas la taille.";
     }
   } else {
     band.hidden = pt.hidden = true;
@@ -422,16 +454,17 @@ function render(){
       + "Saisis-les au fur et à mesure, pas de mémoire en fin de semaine.";
   }
 
-  // progression vers la conclusion
+  // progression
   if (s.n > 2 && s.need){
     const need = Math.min(s.need, 99999);
     $("p-txt").textContent = s.n + " / " + need.toLocaleString("fr-FR");
     $("p-fill").style.width = Math.min(s.n/need*100, 100) + "%";
-    const jours = Math.ceil((need - s.n) / 3);
     $("p-note").textContent = need <= s.n
       ? "Tu as l'effectif nécessaire pour conclure sur l'espérance observée."
-      : "Au rythme de 3 trades par jour, il te reste environ " + jours.toLocaleString("fr-FR")
-        + " jours de bourse. Ce nombre bouge à chaque trade : il dépend de ta dispersion et de la taille de ton espérance.";
+      : "Au rythme de 3 trades par jour, il te reste environ "
+        + Math.ceil((need - s.n)/3).toLocaleString("fr-FR") + " jours de bourse. "
+        + "Ce nombre bouge à chaque trade : il dépend de ta dispersion et de la taille "
+        + "de ton espérance.";
   } else {
     $("p-txt").textContent = "— / —";
     $("p-fill").style.width = "0";
@@ -439,28 +472,44 @@ function render(){
 
   // limites
   const today = new Date().toISOString().slice(0,10);
-  const real = isDemo ? [] : list;
-  const dj = real.filter(t => (t.ts||"").slice(0,10) === today);
-  const pnlJour = dj.reduce((a,t)=>a+t.usd,0);
-  let streak = 0;
-  for (let i = real.length-1; i >= 0 && real[i].R < 0; i--) streak++;
-  const totPct = s.n ? s.usd/CAP*100 : 0;
-
-  const set = (idV, idP, txt, lvl) => {
-    $(idV).textContent = txt;
-    const p = $(idP);
-    p.className = "pill " + lvl;
-    p.textContent = lvl === "ok" ? "OK" : lvl === "near" ? "Limite" : "Stop";
+  const reels = exemple ? [] : list;
+  const dj = reels.filter(x => (x.ts||"").slice(0,10) === today);
+  const pj = dj.reduce((a,x)=>a+x.val,0);
+  let serie = 0;
+  for (let i = reels.length-1; i >= 0 && reels[i].R < 0; i--) serie++;
+  const totPct = s.n && !exemple ? s.val/c.cap*100 : 0;
+  const set = (iv, ip, txt, lvl) => {
+    $(iv).textContent = txt;
+    const e = $(ip);
+    e.className = "pill " + lvl;
+    e.textContent = lvl === "ok" ? "OK" : lvl === "near" ? "Limite" : "Stop";
   };
   set("l-n","l-n-p", dj.length + " / 3", dj.length >= 3 ? "stop" : dj.length === 2 ? "near" : "ok");
-  set("l-c","l-c-p", streak + " / 2", streak >= 2 ? "stop" : streak === 1 ? "near" : "ok");
-  set("l-d","l-d-p", fmt(pnlJour/CAP*100,1) + " %", pnlJour/CAP*100 <= -3 ? "stop" : pnlJour/CAP*100 <= -2 ? "near" : "ok");
-  set("l-t","l-t-p", fmt(totPct,1) + " %", totPct <= -25 ? "stop" : totPct <= -15 ? "near" : "ok");
+  set("l-c","l-c-p", serie + " / 2", serie >= 2 ? "stop" : serie === 1 ? "near" : "ok");
+  set("l-d","l-d-p", fmt(pj/c.cap*100,1) + " %",
+      pj/c.cap*100 <= -3 ? "stop" : pj/c.cap*100 <= -2 ? "near" : "ok");
+  set("l-t","l-t-p", fmt(totPct,1) + " %",
+      totPct <= -25 ? "stop" : totPct <= -15 ? "near" : "ok");
+
+  // taille de compte : le risque ne depend pas du capital mais du stop
+  const stopMed = med(list.filter(x => x.risk > 0).map(x => x.risk)) || 5.68;
+  const risque = stopMed * 0.01 * c.ppp;
+  const pctR = risque / c.cap * 100;
+  const w = $("cap-warn");
+  if (pctR > 5){
+    w.hidden = false;
+    w.textContent = "Au lot minimum de 0,01 et avec un stop médian de " + fmt(stopMed)
+      + " points, chaque trade risque " + fmt(risque) + " " + c.cur + ", soit "
+      + fmt(pctR,1) + " % de " + fmt(c.cap,0) + " " + c.cur + ". "
+      + Math.ceil(100/pctR) + " pertes consécutives suffisent à effacer le compte, alors "
+      + "qu'une trentaine de trades sont nécessaires rien que pour estimer ton slippage. "
+      + "Pour tenir 2 % par trade il faudrait " + fmt(risque/0.02,0) + " " + c.cur + ".";
+  } else { w.hidden = true; }
 
   // tableau
   const tb = $("rows");
   tb.textContent = "";
-  list.forEach(t => {
+  list.forEach(x => {
     const tr = document.createElement("tr");
     const cell = (txt, cls) => {
       const td = document.createElement("td");
@@ -468,93 +517,115 @@ function render(){
       td.textContent = txt;
       return td;
     };
-    tr.append(cell(t.ts ? t.ts.replace("T"," ") : "—"));
+    tr.append(cell(x.ts ? x.ts.replace("T"," ") : "—"));
     const dtd = document.createElement("td");
     const sp = document.createElement("span");
-    sp.className = "dir " + (t.dir > 0 ? "a" : "v");
-    sp.textContent = t.dir > 0 ? "Achat" : "Vente";
+    sp.className = "dir " + (x.dir > 0 ? "a" : "v");
+    sp.textContent = x.dir > 0 ? "Achat" : "Vente";
     dtd.append(sp); tr.append(dtd);
-    tr.append(cell(fmt(t.sig), "n"), cell(fmt(t.ent), "n"), cell(sgn(t.slip), "n"),
-              cell(fmt(t.sl), "n"), cell(fmt(t.out), "n"));
-    tr.append(cell(sgn(t.R) + " R", "n " + (t.R >= 0 ? "r-pos" : "r-neg")));
-    tr.append(cell(sgn(t.usd) + " " + CUR, "n"), cell(t.why));
+    tr.append(cell(fmt(x.sig),"n"), cell(fmt(x.ent),"n"), cell(sgn(x.slip),"n"),
+              cell(fmt(x.sl),"n"), cell(fmt(x.out),"n"));
+    tr.append(cell(sgn(x.R) + " R", "n " + (x.R >= 0 ? "r-pos" : "r-neg")));
+    tr.append(cell(sgn(x.val) + " " + c.cur, "n"), cell(x.why));
     const atd = document.createElement("td");
-    if (!t.demo){
+    if (!x.demo){
       const b = document.createElement("button");
       b.className = "del"; b.textContent = "×";
-      b.setAttribute("aria-label", "Supprimer ce trade");
-      b.onclick = () => { trades = trades.filter(x => x.id !== t.id); save(); };
+      b.setAttribute("aria-label","Supprimer ce trade");
+      b.onclick = () => { c.trades = c.trades.filter(y => y.id !== x.id); save(); };
       atd.append(b);
     }
-    tr.append(atd);
-    tb.append(tr);
+    tr.append(atd); tb.append(tr);
   });
   $("empty").hidden = list.length > 0;
 
-  // Le risque par trade ne depend pas du capital : il depend du stop et du
-  // lot minimum. Sur un compte trop petit, le meme trade devient une mise
-  // de casino. On le calcule et on le dit.
-  const stops = list.filter(t => t.risk > 0).map(t => t.risk).sort((a,b)=>a-b);
-  const stopMed = stops.length ? stops[Math.floor(stops.length/2)] : 5.68;
-  const risque = stopMed * 0.01 * PPP;              // au lot minimum
-  const pct = risque / CAP * 100;
-  const w = $("cap-warn");
-  if (pct > 5){
-    const perdants = Math.ceil(100 / pct);
-    w.hidden = false;
-    w.textContent = "Au lot minimum de 0,01 et avec un stop médian de "
-      + fmt(stopMed,2) + " points, chaque trade risque " + fmt(risque,2) + " " + CUR
-      + ", soit " + fmt(pct,1) + " % de " + fmt(CAP,0) + " " + CUR + ". "
-      + perdants + " trades perdants d'affilée suffisent à effacer le compte, et "
-      + "il en faut une trentaine rien que pour estimer ton slippage. "
-      + "Pour tenir 2 % par trade il faudrait " + fmt(risque/0.02,0) + " " + CUR + ".";
-  } else { w.hidden = true; }
-  $("th-cur").textContent = CUR;
-
-  drawCurve(list);
+  renderCmp();
+  drawCurve(list, c);
 }
 
-function drawCurve(list){
+/* ---------- demo contre reel ---------- */
+function renderCmp(){
+  const remplis = data.comptes.filter(k => k.trades.length >= 3);
+  $("cmp-panel").hidden = remplis.length < 2;
+  if (remplis.length < 2) return;
+  const ref = remplis.find(k => k.demo);
+  const refSlip = ref ? stats(ref.trades.map(x => enrich(x, ref))).medSlip : NaN;
+  const tb = $("cmp-rows");
+  tb.textContent = "";
+  remplis.forEach(k => {
+    const s = stats(k.trades.map(x => enrich(x, k)));
+    const tr = document.createElement("tr");
+    const cell = (txt, cls) => {
+      const td = document.createElement("td");
+      if (cls) td.className = cls;
+      td.textContent = txt;
+      return td;
+    };
+    tr.append(cell(k.nom + (k.demo ? " (démo)" : "")));
+    tr.append(cell(String(s.n), "n"));
+    tr.append(cell(sgn(s.medSlip) + " pt", "n"));
+    tr.append(cell(sgn(s.mean) + " R", "n " + (s.mean >= 0 ? "r-pos" : "r-neg")));
+    if (k.demo || !isFinite(refSlip)){
+      tr.append(cell("référence"));
+    } else {
+      const d = s.medSlip - refSlip;
+      tr.append(cell(sgn(d) + " pt", "n " + (d > 0 ? "r-neg" : "r-pos")));
+    }
+    tb.append(tr);
+  });
+}
+
+function drawCurve(list, c){
   const box = $("curve");
   $("curvepanel").hidden = list.length < 2;
   if (list.length < 2) return;
-  const W = 640, H = 150, P = 26;
-  let eq = CAP; const pts = [{i:0, v:CAP}];
-  list.forEach((t,i) => { eq += t.usd; pts.push({i:i+1, v:eq}); });
+  const W = 640, H = 150, P = 30;
+  let eq = c.cap; const pts = [{i:0, v:c.cap}];
+  list.forEach((t,i) => { eq += t.val; pts.push({i:i+1, v:eq}); });
   const vs = pts.map(p => p.v);
   const lo = Math.min(...vs), hi = Math.max(...vs);
-  const pad = (hi - lo) * 0.15 || 5;
+  const pad = (hi - lo) * 0.15 || Math.max(c.cap*0.01, 1);
   const y = v => H - P - (v - (lo-pad)) / ((hi+pad) - (lo-pad)) * (H - 2*P);
   const x = i => P + i / (pts.length - 1) * (W - 2*P);
   const d = pts.map((p,k) => (k ? "L" : "M") + x(p.i).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
   const last = pts[pts.length-1];
-  const col = last.v >= CAP ? "var(--win)" : "var(--loss)";
+  const col = last.v >= c.cap ? "var(--win)" : "var(--loss)";
   box.innerHTML =
     '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Courbe de capital">' +
-      '<line x1="' + P + '" x2="' + (W-P) + '" y1="' + y(CAP).toFixed(1) + '" y2="' + y(CAP).toFixed(1) +
+      '<line x1="' + P + '" x2="' + (W-P) + '" y1="' + y(c.cap).toFixed(1) + '" y2="' + y(c.cap).toFixed(1) +
         '" stroke="var(--line-strong)" stroke-dasharray="3 3" fill="none"/>' +
-      '<text x="' + P + '" y="' + (y(CAP)-6).toFixed(1) + '" fill="var(--faint)" font-size="10" ' +
-        'font-family="IBM Plex Mono, monospace">départ ' + CAP + ' $</text>' +
+      '<text x="' + P + '" y="' + (y(c.cap)-6).toFixed(1) + '" fill="var(--faint)" font-size="10" ' +
+        'font-family="IBM Plex Mono, monospace">départ ' + fmt(c.cap,0) + ' ' + c.cur + '</text>' +
       '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2" ' +
         'stroke-linejoin="round" stroke-linecap="round"/>' +
       '<circle cx="' + x(last.i).toFixed(1) + '" cy="' + y(last.v).toFixed(1) + '" r="3.5" fill="' + col + '"/>' +
       '<text x="' + (W-P) + '" y="' + (y(last.v)-9).toFixed(1) + '" text-anchor="end" fill="' + col +
         '" font-size="11" font-weight="600" font-family="IBM Plex Mono, monospace">' +
-        fmt(last.v) + ' $</text>' +
+        fmt(last.v) + ' ' + c.cur + '</text>' +
     '</svg>';
 }
 
 /* ---------- persistance ---------- */
+let docref = null;
 function localSave(){
-  try { localStorage.setItem("journal-xauusd", JSON.stringify(trades)); } catch (e) {}
+  try { localStorage.setItem("journal-v2", JSON.stringify(data)); } catch (e) {}
 }
 function localLoad(){
-  try { const r = localStorage.getItem("journal-xauusd"); if (r) trades = JSON.parse(r) || []; } catch (e) {}
+  try {
+    const r = localStorage.getItem("journal-v2");
+    if (r){ const o = JSON.parse(r); if (o && Array.isArray(o.comptes) && o.comptes.length) data = o; return; }
+    // reprise de l'ancien format, qui n'avait qu'un seul carnet
+    const v1 = localStorage.getItem("journal-xauusd");
+    if (v1){
+      const arr = JSON.parse(v1);
+      if (Array.isArray(arr) && arr.length) data.comptes[0].trades = arr;
+    }
+  } catch (e) {}
 }
 async function save(){
   localSave();
   render();
-  if (docref) { try { await docref.set({trades}); } catch (e) {} }
+  if (docref){ try { await docref.set(data); } catch (e) {} }
 }
 
 /* ---------- saisie ---------- */
@@ -564,36 +635,32 @@ function readForm(){
     id: "t" + Date.now(),
     ts: $("f-date").value,
     dir: parseInt($("f-dir").value, 10),
-    lot: num("f-lot"),
-    sig: num("f-sig"), ent: num("f-ent"), sl: num("f-sl"),
-    tp: num("f-tp"), out: num("f-out"),
+    lot: num("f-lot"), sig: num("f-sig"), ent: num("f-ent"),
+    sl: num("f-sl"), tp: num("f-tp"), out: num("f-out"),
     why: $("f-why").value, note: $("f-note").value.trim()
   };
-  const need = ["ent","sl","out"];
-  if (need.some(k => !isFinite(t[k]))) return null;
+  if (!isFinite(t.ent) || !isFinite(t.sl) || !isFinite(t.out)) return null;
+  if (Math.abs(t.ent - t.sl) < 1e-9) return null;
   if (!isFinite(t.sig)) t.sig = t.ent;
   if (!isFinite(t.tp)) t.tp = t.out;
   if (!isFinite(t.lot) || t.lot <= 0) t.lot = 0.01;
   if (!t.ts) t.ts = new Date().toISOString().slice(0,16);
-  if (Math.abs(t.ent - t.sl) < 1e-9) return null;
   return t;
 }
 function updatePreview(){
   const t = readForm();
-  if (!t) { $("prev").textContent = "—"; return; }
-  const e = enrich(t);
-  $("prev").textContent = sgn(e.R) + " R   " + sgn(e.usd) + " $   slip " + sgn(e.slip) + " pt";
+  if (!t){ $("prev").textContent = "—"; return; }
+  const e = enrich(t, cpt());
+  $("prev").textContent = sgn(e.R) + " R   " + sgn(e.val) + " " + cpt().cur
+    + "   slip " + sgn(e.slip) + " pt";
 }
 ["f-dir","f-lot","f-sig","f-ent","f-sl","f-tp","f-out"].forEach(id =>
   $(id).addEventListener("input", updatePreview));
 
 $("add").onclick = () => {
   const t = readForm();
-  if (!t){
-    $("prev").textContent = "Entrée, stop et sortie sont nécessaires";
-    return;
-  }
-  trades.push(t);
+  if (!t){ $("prev").textContent = "Entrée, stop et sortie sont nécessaires"; return; }
+  cpt().trades.push(t);
   ["f-sig","f-ent","f-sl","f-tp","f-out","f-note"].forEach(id => $(id).value = "");
   $("prev").textContent = "—";
   $("f-date").value = new Date().toISOString().slice(0,16);
@@ -604,40 +671,80 @@ $("clearform").onclick = () => {
   $("prev").textContent = "—";
 };
 $("wipe").onclick = () => {
-  if (!trades.length) return;
-  if (confirm("Effacer les " + trades.length + " trades enregistrés ? C'est définitif.")){
-    trades = []; save();
+  const c = cpt();
+  if (!c.trades.length) return;
+  if (confirm("Effacer les " + c.trades.length + " trades du compte « " + c.nom + " » ? C'est définitif.")){
+    c.trades = []; save();
   }
 };
 
+/* ---------- comptes ---------- */
+$("acc-sel").onchange = e => { data.courant = e.target.value; save(); };
+["f-name","f-cap","f-cur","f-ppp"].forEach(id =>
+  $(id).addEventListener("input", () => {
+    const c = cpt();
+    if (id === "f-name") c.nom = $("f-name").value || "Compte";
+    if (id === "f-cur")  c.cur = $("f-cur").value;
+    if (id === "f-cap"){ const v = parseFloat($("f-cap").value); if (isFinite(v) && v > 0) c.cap = v; }
+    if (id === "f-ppp"){ const v = parseFloat($("f-ppp").value); if (isFinite(v) && v > 0) c.ppp = v; }
+    localSave(); render();
+    if (docref) docref.set(data).catch(() => {});
+  }));
+$("acc-new").onclick = () => {
+  const nom = prompt("Nom du compte ?", "Nouveau compte");
+  if (!nom) return;
+  const c = cpt();
+  const id = "c" + Date.now();
+  data.comptes.push({id, nom, cap:c.cap, cur:c.cur, ppp:c.ppp,
+                     demo:/d[ée]mo/i.test(nom), trades:[]});
+  data.courant = id;
+  save();
+};
+$("acc-del").onclick = () => {
+  if (data.comptes.length < 2) return;
+  const c = cpt();
+  if (!confirm("Supprimer « " + c.nom + " » et ses " + c.trades.length + " trades ?")) return;
+  data.comptes = data.comptes.filter(k => k.id !== c.id);
+  data.courant = data.comptes[0].id;
+  save();
+};
+
 /* ---------- demarrage ---------- */
-["f-cap","f-cur","f-ppp"].forEach(id =>
-  $(id).addEventListener("input", () => { readCap(); render(); }));
 $("f-date").value = new Date().toISOString().slice(0,16);
-loadCap();
 localLoad();
 render();
 
 (async () => {
-  const d = await (window.claude?.use?.("db") ?? Promise.resolve(null));
-  if (!d){
+  const db = await (window.claude?.use?.("db") ?? Promise.resolve(null));
+  if (!db){
     $("t-store").textContent = "stockage local";
     $("store-note").textContent = "Tes trades sont enregistrés dans ce navigateur uniquement. "
-      + "Ils ne suivent pas d'un appareil à l'autre et disparaissent si tu effaces les données du site.";
+      + "Ils ne suivent pas d'un appareil à l'autre et disparaissent si tu effaces les "
+      + "données du site.";
     return;
   }
-  db = d;
   docref = db.doc("journal/xauusd");
   try {
     const snap = await docref.get();
-    const dist = snap?.data?.trades;
-    if (Array.isArray(dist) && dist.length >= trades.length){ trades = dist; }
-    else if (trades.length) { await docref.set({trades}); }
+    const dist = snap?.data;
+    const nLoc = data.comptes.reduce((a,k)=>a+k.trades.length,0);
+    if (dist && Array.isArray(dist.comptes) && dist.comptes.length){
+      const nDist = dist.comptes.reduce((a,k)=>a+(k.trades?.length||0),0);
+      if (nDist >= nLoc) data = dist;
+      else await docref.set(data);
+    } else if (Array.isArray(dist?.trades) && dist.trades.length){
+      // ancien format distant : un seul carnet
+      data.comptes[0].trades = dist.trades;
+      await docref.set(data);
+    } else if (nLoc){
+      await docref.set(data);
+    }
     localSave();
     render();
     $("t-store").textContent = "synchronisé";
-    $("store-note").textContent = "Tes trades sont enregistrés durablement et suivent d'un appareil à l'autre. "
-      + "Je peux les relire pour analyser ton forward test quand tu me le demanderas.";
+    $("store-note").textContent = "Tes trades sont enregistrés durablement et suivent d'un "
+      + "appareil à l'autre. Je peux les relire pour analyser ton forward test quand tu me "
+      + "le demanderas.";
   } catch (e) {
     $("t-store").textContent = "stockage local";
   }
