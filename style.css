@@ -38,7 +38,6 @@ nav a {
 .card {
     background: white;
     width: 260px;
-    margin: auto;
     padding: 20px;
     border-radius: 12px;
     box-shadow: 0 5px 15px rgba(0,0,0,0.1);
@@ -69,7 +68,9 @@ footer {
     text-align: center;
     padding: 20px;
     margin-top: 50px;
-}.products{
+}
+
+.products {
 display:flex;
 justify-content:center;
 gap:30px;
@@ -82,7 +83,9 @@ transition:.3s;
 
 .card:hover{
 transform:translateY(-8px);
-}#search{
+}
+
+#search {
     width:300px;
     max-width:90%;
     padding:12px;

@@ -1,16 +1,12 @@
 const search = document.getElementById("search");
 
-search.addEventListener("keyup", function(){
+if (search) {
+  search.addEventListener("input", function () {
+    const value = this.value.trim().toLowerCase();
 
-const value = this.value.toLowerCase();
-
-document.querySelectorAll(".card").forEach(card=>{
-
-card.style.display =
-card.innerText.toLowerCase().includes(value)
-? "block"
-: "none";
-
-});
-
-});
+    document.querySelectorAll(".card").forEach(card => {
+      const match = card.innerText.toLowerCase().includes(value);
+      card.style.display = match ? "" : "none";
+    });
+  });
+}
