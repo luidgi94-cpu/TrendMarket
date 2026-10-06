@@ -17,7 +17,8 @@ def find_order_blocks(candles: List[Candle], events: List[StructureEvent],
     """
     a = atr(candles)
     out: List[Zone] = []
-    for ev in events:
+    seen: set = set()   # une bougie ne produit qu'un seul OB, meme si
+    for ev in events:   # plusieurs evenements la confirment (BOS puis CHoCH)
         bi = ev.idx
         want_bearish_candle = ev.direction == "bull"
         start = max(0, bi - lookback)
@@ -29,6 +30,10 @@ def find_order_blocks(candles: List[Candle], events: List[StructureEvent],
                 break
         if ob_idx is None:
             continue
+
+        if (ob_idx, ev.direction) in seen:
+            continue
+        seen.add((ob_idx, ev.direction))
 
         ob = candles[ob_idx]
         # filtre d'impulsion : le deplacement OB -> cassure doit etre significatif

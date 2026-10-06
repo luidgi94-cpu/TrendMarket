@@ -12,6 +12,7 @@ class Candle:
     low: float
     close: float
     volume: float = 0.0
+    spread: float = 0.0   # en points, si le flux le fournit (MT5)
 
     @property
     def bullish(self) -> bool:

@@ -1,0 +1,324 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+//  XAUUSD · Order Block Scanner
+//  Structure (BOS/CHoCH) · Order Blocks classés A+/A/B · FVG · Liquidité
+//
+//  Conception : un Order Block n'est tracé QU'À la clôture de la bougie qui
+//  casse la structure. Jamais au moment où la bougie se forme. C'est la
+//  différence entre un indicateur honnête et un indicateur qui lit le futur.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("XAUUSD · Order Block Scanner", "OB Scanner", overlay = true,
+     max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ══════════════════════════ ENTRÉES ══════════════════════════
+gS = "Structure"
+swingLen   = input.int(5,    "Longueur du pivot (fractale)",   minval = 1, maxval = 50, group = gS)
+obLookback = input.int(20,   "Recherche OB (bougies arrière)", minval = 3, maxval = 100, group = gS)
+minImpATR  = input.float(1.5,"Impulsion minimale (× ATR)",     minval = 0.0, step = 0.1, group = gS)
+useBody    = input.bool(true,"Zone OB = corps (sinon mèches)", group = gS)
+showStruct = input.bool(true,"Étiqueter BOS / CHoCH",          group = gS)
+
+gZ = "Zones"
+maxOB      = input.int(8,    "OB conservés par sens",     minval = 1, maxval = 30, group = gZ)
+extendBars = input.int(40,   "Prolongation des boîtes",   minval = 0, group = gZ)
+delMitig   = input.bool(true,"Supprimer les zones mitigées", group = gZ)
+showFVG    = input.bool(true,"Afficher les FVG",          group = gZ)
+maxFVG     = input.int(6,    "FVG conservés",             minval = 1, maxval = 30, group = gZ)
+
+gL = "Liquidité / sessions"
+showSess   = input.bool(true,     "Tracer H/L des sessions", group = gL)
+sAsia      = input.session("0000-0800", "Asie (UTC)",    group = gL)
+sLondon    = input.session("0700-1600", "Londres (UTC)", group = gL)
+sNY        = input.session("1200-2100", "New York (UTC)",group = gL)
+sweepWin   = input.int(60,        "Fenêtre de balayage (bougies)", minval = 1, group = gL)
+
+gR = "Classement"
+showRank   = input.bool(true, "Étiquette de rang A+/A/B", group = gR)
+onlyGood   = input.bool(false,"N'afficher que A+ et A",   group = gR)
+
+gH = "Biais unité supérieure"
+useHTF     = input.bool(true, "Activer le filtre HTF",    group = gH)
+htfTF      = input.timeframe("60", "Unité de temps",      group = gH)
+
+gC = "Couleurs"
+cBull   = input.color(color.new(#089981, 75), "OB haussier", group = gC)
+cBear   = input.color(color.new(#f23645, 75), "OB baissier", group = gC)
+cFvgB   = input.color(color.new(#2962ff, 85), "FVG haussier", group = gC)
+cFvgS   = input.color(color.new(#ff9800, 85), "FVG baissier", group = gC)
+cSess   = input.color(color.new(#787b86, 40), "Niveaux de session", group = gC)
+
+// ══════════════════════════ OUTILS ══════════════════════════
+atrV = ta.atr(14)
+
+// Biais HTF — un seul appel request.security, décalé d'une bougie :
+// pas de repeinture, et on reste très loin du plafond de 40 securities.
+htfClose = useHTF ? request.security(syminfo.tickerid, htfTF, close[1],
+     lookahead = barmerge.lookahead_off) : na
+htfEma   = useHTF ? request.security(syminfo.tickerid, htfTF, ta.ema(close, 50)[1],
+     lookahead = barmerge.lookahead_off) : na
+htfBull  = useHTF and not na(htfClose) and not na(htfEma) and htfClose > htfEma
+htfBear  = useHTF and not na(htfClose) and not na(htfEma) and htfClose < htfEma
+
+// ══════════════════════════ STRUCTURE ══════════════════════════
+ph = ta.pivothigh(swingLen, swingLen)
+pl = ta.pivotlow(swingLen, swingLen)
+
+var float swHigh    = na   // sommet de référence (cible d'un BOS haussier)
+var float swLow     = na   // creux de référence  (cible d'un BOS baissier)
+var int   swLowBar  = na
+var int   swHighBar = na
+var float chochLow  = na   // creux ayant entraîné le dernier sommet
+var float chochHigh = na   // sommet ayant entraîné le dernier creux
+var int   trendDir  = 0    // 1 haussier · -1 baissier · 0 indéterminé
+
+if not na(ph)
+    chochLow  := swLow
+    swHigh    := ph
+    swHighBar := bar_index - swingLen
+if not na(pl)
+    chochHigh := swHigh
+    swLow     := pl
+    swLowBar  := bar_index - swingLen
+
+// Cassures — évaluées sur la CLÔTURE, conformément à la définition.
+bosBull   = not na(swHigh)    and close > swHigh    and trendDir ==  1
+bosBear   = not na(swLow)     and close < swLow     and trendDir == -1
+chochBull = not na(chochHigh) and close > chochHigh and trendDir == -1
+chochBear = not na(chochLow)  and close < chochLow  and trendDir ==  1
+initBull  = trendDir == 0 and not na(swHigh) and close > swHigh
+initBear  = trendDir == 0 and not na(swLow)  and close < swLow
+
+breakBull = bosBull or chochBull or initBull
+breakBear = bosBear or chochBear or initBear
+
+// Origine de la jambe impulsive (pour l'OTE)
+legOrigin = breakBull ? swLow : breakBear ? swHigh : na
+
+if breakBull
+    trendDir := 1
+    swHigh   := na
+if breakBear
+    trendDir := -1
+    swLow    := na
+
+if showStruct and (bosBull or chochBull)
+    label.new(bar_index, low, chochBull ? "CHoCH" : "BOS",
+         style = label.style_label_up, color = color.new(#089981, 20),
+         textcolor = color.white, size = size.tiny)
+if showStruct and (bosBear or chochBear)
+    label.new(bar_index, high, chochBear ? "CHoCH" : "BOS",
+         style = label.style_label_down, color = color.new(#f23645, 20),
+         textcolor = color.white, size = size.tiny)
+
+// ══════════════════════════ SESSIONS / LIQUIDITÉ ══════════════════════════
+inAsia = showSess and not na(time(timeframe.period, sAsia,   "GMT"))
+inLon  = showSess and not na(time(timeframe.period, sLondon, "GMT"))
+inNY   = showSess and not na(time(timeframe.period, sNY,     "GMT"))
+
+var float asiaH = na
+var float asiaL = na
+var float lonH  = na
+var float lonL  = na
+var float nyH   = na
+var float nyL   = na
+// Niveaux de la session PRÉCÉDENTE = la liquidité réellement exploitable
+var float pAsiaH = na
+var float pAsiaL = na
+var float pLonH  = na
+var float pLonL  = na
+var float pNyH   = na
+var float pNyL   = na
+
+trackSession(inSess, wasIn, hi, lo, pHi, pLo) =>
+    h = hi
+    l = lo
+    ph2 = pHi
+    pl2 = pLo
+    if inSess and not wasIn            // ouverture
+        h := high
+        l := low
+    else if inSess
+        h := math.max(nz(h, high), high)
+        l := math.min(nz(l, low),  low)
+    else if wasIn and not inSess       // clôture : le niveau devient liquidité
+        ph2 := h
+        pl2 := l
+    [h, l, ph2, pl2]
+
+[aH, aL, paH, paL] = trackSession(inAsia, inAsia[1], asiaH, asiaL, pAsiaH, pAsiaL)
+asiaH := aH
+asiaL := aL
+pAsiaH := paH
+pAsiaL := paL
+[lH, lL, plH, plL] = trackSession(inLon, inLon[1], lonH, lonL, pLonH, pLonL)
+lonH := lH
+lonL := lL
+pLonH := plH
+pLonL := plL
+[nH, nL, pnH, pnL] = trackSession(inNY, inNY[1], nyH, nyL, pNyH, pNyL)
+nyH := nH
+nyL := nL
+pNyH := pnH
+pNyL := pnL
+
+// Balayages : le prix prend la liquidité d'une session précédente
+var int lastSweepSell = na   // creux de session pris → carburant haussier
+var int lastSweepBuy  = na   // sommet de session pris → carburant baissier
+if (not na(pAsiaL) and low < pAsiaL) or (not na(pLonL) and low < pLonL) or (not na(pNyL) and low < pNyL)
+    lastSweepSell := bar_index
+if (not na(pAsiaH) and high > pAsiaH) or (not na(pLonH) and high > pLonH) or (not na(pNyH) and high > pNyH)
+    lastSweepBuy := bar_index
+
+var line lnAsiaH = na
+var line lnAsiaL = na
+var line lnLonH  = na
+var line lnLonL  = na
+var line lnNyH   = na
+var line lnNyL   = na
+drawLvl(ln, lvl) =>
+    l = ln
+    if not na(lvl)
+        if na(l)
+            l := line.new(bar_index - 1, lvl, bar_index, lvl, color = cSess,
+                 style = line.style_dotted, width = 1)
+        else
+            line.set_xy1(l, bar_index - 1, lvl)
+            line.set_xy2(l, bar_index + 10, lvl)
+    l
+if showSess and barstate.islast
+    lnAsiaH := drawLvl(lnAsiaH, pAsiaH)
+    lnAsiaL := drawLvl(lnAsiaL, pAsiaL)
+    lnLonH  := drawLvl(lnLonH,  pLonH)
+    lnLonL  := drawLvl(lnLonL,  pLonL)
+    lnNyH   := drawLvl(lnNyH,   pNyH)
+    lnNyL   := drawLvl(lnNyL,   pNyL)
+
+// ══════════════════════════ FVG ══════════════════════════
+var box[] fvgBoxes = array.new<box>()
+fvgBull = low  > high[2]
+fvgBear = high < low[2]
+if showFVG and (fvgBull or fvgBear)
+    t = fvgBull ? low      : low[2]
+    b = fvgBull ? high[2]  : high
+    bx = box.new(bar_index - 2, t, bar_index + extendBars, b,
+         border_color = color.new(fvgBull ? cFvgB : cFvgS, 50),
+         bgcolor = fvgBull ? cFvgB : cFvgS)
+    array.push(fvgBoxes, bx)
+    if array.size(fvgBoxes) > maxFVG
+        box.delete(array.shift(fvgBoxes))
+
+// ══════════════════════════ ORDER BLOCKS ══════════════════════════
+var box[]   obBoxes = array.new<box>()
+var label[] obLabels = array.new<label>()
+var int[]   obDir   = array.new<int>()
+
+// Dernière bougie opposée avant l'impulsion, cherchée depuis la bougie de cassure
+findOB(wantBearish) =>
+    idx = -1
+    for i = 1 to obLookback
+        if idx == -1
+            isOpp = wantBearish ? close[i] < open[i] : close[i] > open[i]
+            if isOpp
+                idx := i
+    idx
+
+// FVG de même sens entre l'OB et la cassure → confluence de rang
+hasFVGBetween(obOff, wantBull) =>
+    found = false
+    if obOff > 2
+        for i = 0 to obOff - 2
+            if not found
+                found := wantBull ? low[i] > high[i + 2] : high[i] < low[i + 2]
+    found
+
+if breakBull or breakBear
+    obOff = findOB(breakBull)
+    if obOff > 0
+        obTop = useBody ? math.max(open[obOff], close[obOff]) : high[obOff]
+        obBot = useBody ? math.min(open[obOff], close[obOff]) : low[obOff]
+
+        // Filtre d'impulsion : déplacement OB → cassure en multiples d'ATR
+        imp = breakBull ? (high - obBot) : (obTop - low)
+        impOK = atrV > 0 and imp >= minImpATR * atrV
+
+        if impOK
+            // ── Classement A+ / A / B ────────────────────────────────────
+            // OTE : l'OB chevauche-t-il la zone 0.618–0.786 de sa jambe ?
+            inOTE = false
+            if not na(legOrigin)
+                legHi = breakBull ? high : legOrigin
+                legLo = breakBull ? legOrigin : low
+                rng   = legHi - legLo
+                if rng > 0
+                    oteA = breakBull ? legHi - 0.786 * rng : legLo + 0.618 * rng
+                    oteB = breakBull ? legHi - 0.618 * rng : legLo + 0.786 * rng
+                    inOTE := obTop >= oteA and obBot <= oteB
+
+            hasFVG = hasFVGBetween(obOff, breakBull)
+            swept  = breakBull ? (not na(lastSweepSell) and bar_index - lastSweepSell <= sweepWin)
+                 : (not na(lastSweepBuy)  and bar_index - lastSweepBuy  <= sweepWin)
+            aligned = breakBull ? (not useHTF or htfBull) : (not useHTF or htfBear)
+
+            rank = inOTE and hasFVG and swept ? "A+" : hasFVG and aligned ? "A" : "B"
+
+            if not (onlyGood and rank == "B")
+                bx = box.new(bar_index - obOff, obTop, bar_index + extendBars, obBot,
+                     border_color = color.new(breakBull ? cBull : cBear, 30),
+                     bgcolor = breakBull ? cBull : cBear)
+                array.push(obBoxes, bx)
+                array.push(obDir, breakBull ? 1 : -1)
+
+                if showRank
+                    lb = label.new(bar_index + extendBars, breakBull ? obBot : obTop,
+                         rank + (breakBull ? " OB▲" : " OB▼"),
+                         style = label.style_label_left,
+                         color = color.new(rank == "A+" ? color.yellow
+                              : rank == "A" ? (breakBull ? #089981 : #f23645) : color.gray, 20),
+                         textcolor = rank == "A+" ? color.black : color.white,
+                         size = size.tiny)
+                    array.push(obLabels, lb)
+
+                alert(rank + " Order Block " + (breakBull ? "haussier" : "baissier")
+                     + " · " + str.tostring(obBot, format.mintick) + " – "
+                     + str.tostring(obTop, format.mintick), alert.freq_once_per_bar_close)
+
+                if array.size(obBoxes) > maxOB * 2
+                    box.delete(array.shift(obBoxes))
+                    array.shift(obDir)
+                    if array.size(obLabels) > 0
+                        label.delete(array.shift(obLabels))
+
+// ── Mitigation : le prix revient dans la zone ────────────────────────────
+if array.size(obBoxes) > 0
+    for i = array.size(obBoxes) - 1 to 0
+        bx = array.get(obBoxes, i)
+        t  = box.get_top(bx)
+        b  = box.get_bottom(bx)
+        if high >= b and low <= t
+            if delMitig
+                box.delete(bx)
+                array.remove(obBoxes, i)
+                array.remove(obDir, i)
+            else
+                box.set_bgcolor(bx, color.new(color.gray, 85))
+                box.set_border_color(bx, color.new(color.gray, 60))
+        else
+            box.set_right(bx, bar_index + extendBars)
+
+// ══════════════════════════ TABLEAU DE BORD ══════════════════════════
+var table tb = table.new(position.top_right, 2, 5,
+     border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 50))
+if barstate.islast
+    tendTxt = trendDir == 1 ? "Haussier" : trendDir == -1 ? "Baissier" : "Neutre"
+    tendCol = trendDir == 1 ? #089981 : trendDir == -1 ? #f23645 : color.gray
+    htfTxt  = not useHTF ? "désactivé" : htfBull ? "Haussier" : htfBear ? "Baissier" : "Neutre"
+    table.cell(tb, 0, 0, "OB Scanner", text_color = color.white, bgcolor = color.new(color.black, 20), text_size = size.small)
+    table.cell(tb, 1, 0, syminfo.ticker,  text_color = color.white, bgcolor = color.new(color.black, 20), text_size = size.small)
+    table.cell(tb, 0, 1, "Structure " + timeframe.period, text_color = color.gray, text_size = size.tiny)
+    table.cell(tb, 1, 1, tendTxt, text_color = tendCol, text_size = size.tiny)
+    table.cell(tb, 0, 2, "Biais " + htfTF, text_color = color.gray, text_size = size.tiny)
+    table.cell(tb, 1, 2, htfTxt, text_color = color.white, text_size = size.tiny)
+    table.cell(tb, 0, 3, "OB actifs", text_color = color.gray, text_size = size.tiny)
+    table.cell(tb, 1, 3, str.tostring(array.size(obBoxes)), text_color = color.white, text_size = size.tiny)
+    table.cell(tb, 0, 4, "ATR(14)", text_color = color.gray, text_size = size.tiny)
+    table.cell(tb, 1, 4, str.tostring(atrV, format.mintick), text_color = color.white, text_size = size.tiny)

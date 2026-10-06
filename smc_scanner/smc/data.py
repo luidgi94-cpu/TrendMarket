@@ -19,13 +19,24 @@ def _parse_ts(raw: str) -> datetime:
     raise ValueError(f"horodatage illisible: {raw!r}")
 
 
+def _sniff(path: str) -> str:
+    with open(path, encoding="utf-8-sig", errors="replace") as fh:
+        head = fh.readline()
+    return "\t" if head.count("\t") >= 2 else (";" if head.count(";") > head.count(",") else ",")
+
+
 def load_csv(path: str) -> List[Candle]:
-    """CSV avec en-tete contenant time/date, open, high, low, close[, volume].
-    Les horodatages sans fuseau sont traites comme UTC."""
+    """CSV ou TSV avec en-tete : time/date, open, high, low, close[, volume].
+
+    Gere l'export MetaTrader 5 (tabulations, en-tetes <DATE> <TIME> ...,
+    colonnes DATE et TIME separees) comme les exports classiques.
+    Les horodatages sans fuseau sont traites comme UTC.
+    """
     out: List[Candle] = []
     with open(path, newline="", encoding="utf-8-sig") as fh:
-        rd = csv.DictReader(fh)
-        cols = {c.lower().strip(): c for c in (rd.fieldnames or [])}
+        rd = csv.DictReader(fh, delimiter=_sniff(path))
+        # <DATE> -> date
+        cols = {c.lower().strip().strip("<>"): c for c in (rd.fieldnames or [])}
 
         def col(*names):
             for n in names:
@@ -34,16 +45,23 @@ def load_csv(path: str) -> List[Candle]:
             raise KeyError(f"colonne absente, candidats {names}, trouve {list(cols)}")
 
         c_ts = col("time", "timestamp", "date", "datetime", "gmt time")
+        # MT5 : DATE et TIME dans deux colonnes distinctes
+        c_t2 = cols.get("time") if "date" in cols and "time" in cols else None
+        if c_t2 and c_ts == c_t2:
+            c_ts, c_t2 = cols["date"], cols["time"]
         c_o, c_h = col("open"), col("high")
         c_l, c_c = col("low"), col("close")
-        c_v = cols.get("volume") or cols.get("vol") or cols.get("tickvol")
+        c_v = cols.get("tickvol") or cols.get("volume") or cols.get("vol")
+        c_sp = cols.get("spread")
         for row in rd:
             try:
+                raw_ts = row[c_ts] if not c_t2 else f"{row[c_ts]} {row[c_t2]}"
                 out.append(Candle(
-                    ts=_parse_ts(row[c_ts]),
+                    ts=_parse_ts(raw_ts),
                     open=float(row[c_o]), high=float(row[c_h]),
                     low=float(row[c_l]), close=float(row[c_c]),
                     volume=float(row[c_v]) if c_v and row.get(c_v) else 0.0,
+                    spread=float(row[c_sp]) if c_sp and row.get(c_sp) else 0.0,
                 ))
             except (ValueError, KeyError, TypeError):
                 continue  # ligne corrompue -> ignoree

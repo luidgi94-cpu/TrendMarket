@@ -12,8 +12,16 @@ def _fmt(p: float) -> str:
 
 def render(symbol: str, tfs: List[str], momentum: Dict[str, str],
            liqs: List[Liquidity], ranked: List[Dict], base: List[Candle],
-           atr_ref: float, max_obs: int = 15, price_decimals: int = 2) -> str:
+           atr_ref: float, max_obs: int = 12, price_decimals: int = 2) -> str:
     last = base[-1]
+
+    def dist(d):
+        z = d["ob"]
+        return 0.0 if z.contains(last.close) else min(abs(last.close - z.low),
+                                                      abs(last.close - z.high))
+    # a rang egal, la zone la plus proche du prix est la seule actionnable
+    order = {"A+": 0, "A": 1, "B": 2}
+    ranked = sorted(ranked, key=lambda d: (order[d["rank"]], dist(d)))
     L: List[str] = []
     L.append(RULE)
     L.append(f"  RAPPORT SMC / ICT  --  {symbol}")
@@ -64,7 +72,8 @@ def render(symbol: str, tfs: List[str], momentum: Dict[str, str],
                 L.append(f"        Liquidite     : balayage prealable -> {s}")
             else:
                 L.append("        Liquidite     : pas de balayage de session prealable")
-            L.append(f"        Position prix : {approach_state(ob, last, atr_ref)}")
+            L.append(f"        Position prix : {approach_state(ob, last, atr_ref)}"
+                     f"  ({dist(r):+.2f} $ du prix)".replace("+", ""))
 
     L.append("\n4. PLAN DE CONFIRMATION")
     L.append("-" * 78)
