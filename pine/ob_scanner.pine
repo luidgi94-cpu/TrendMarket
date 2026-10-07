@@ -17,6 +17,12 @@ obLookback = input.int(20,   "Recherche OB (bougies arrière)", minval = 3, maxv
 minImpATR  = input.float(1.5,"Impulsion minimale (× ATR)",     minval = 0.0, step = 0.1, group = gS)
 useBody    = input.bool(true,"Zone OB = corps (sinon mèches)", group = gS)
 showStruct = input.bool(true,"Étiqueter BOS / CHoCH",          group = gS)
+strictMode = input.bool(false,"CHoCH strict (ignorer les cassures intermédiaires)", group = gS,
+     tooltip = "Décoché : une cassure du sommet/creux de référence génère un OB même " +
+               "si elle n'atteint pas le niveau CHoCH. Sur XAUUSD, le mode strict " +
+               "ignore environ 1 cassure sur 3.")
+debugMode  = input.bool(false,"Mode diagnostic (afficher les rejets)", group = gS,
+     tooltip = "Étiquette chaque cassure dont l'OB a été rejeté, avec la raison.")
 
 gZ = "Zones"
 maxOB      = input.int(8,    "OB conservés par sens",     minval = 1, maxval = 30, group = gZ)
@@ -81,32 +87,41 @@ if not na(pl)
     swLowBar  := bar_index - swingLen
 
 // Cassures — évaluées sur la CLÔTURE, conformément à la définition.
-bosBull   = not na(swHigh)    and close > swHigh    and trendDir ==  1
-bosBear   = not na(swLow)     and close < swLow     and trendDir == -1
+swingBull = not na(swHigh) and close > swHigh   // le sommet de référence cède
+swingBear = not na(swLow)  and close < swLow    // le creux de référence cède
+
+bosBull   = swingBull and trendDir ==  1
+bosBear   = swingBear and trendDir == -1
 chochBull = not na(chochHigh) and close > chochHigh and trendDir == -1
 chochBear = not na(chochLow)  and close < chochLow  and trendDir ==  1
-initBull  = trendDir == 0 and not na(swHigh) and close > swHigh
-initBear  = trendDir == 0 and not na(swLow)  and close < swLow
+initBull  = trendDir == 0 and swingBull
+initBear  = trendDir == 0 and swingBear
 
-breakBull = bosBull or chochBull or initBull
-breakBear = bosBear or chochBear or initBear
+// Cassure intermédiaire : le sommet de référence cède en tendance baissière
+// sans atteindre le niveau CHoCH. Sur XAUUSD c'est ~1 cassure sur 3 — les
+// ignorer fait manquer des Order Blocks parfaitement valides.
+interBull = swingBull and trendDir == -1 and not chochBull
+interBear = swingBear and trendDir ==  1 and not chochBear
+
+breakBull = bosBull or chochBull or initBull or (not strictMode and interBull)
+breakBear = bosBear or chochBear or initBear or (not strictMode and interBear)
 
 // Origine de la jambe impulsive (pour l'OTE)
 legOrigin = breakBull ? swLow : breakBear ? swHigh : na
 
 if breakBull
-    trendDir := 1
+    trendDir := interBull and not chochBull and not initBull ? trendDir : 1
     swHigh   := na
 if breakBear
-    trendDir := -1
+    trendDir := interBear and not chochBear and not initBear ? trendDir : -1
     swLow    := na
 
-if showStruct and (bosBull or chochBull)
-    label.new(bar_index, low, chochBull ? "CHoCH" : "BOS",
+if showStruct and (bosBull or chochBull or (not strictMode and interBull))
+    label.new(bar_index, low, chochBull ? "CHoCH" : bosBull ? "BOS" : "BRK",
          style = label.style_label_up, color = color.new(#089981, 20),
          textcolor = color.white, size = size.tiny)
-if showStruct and (bosBear or chochBear)
-    label.new(bar_index, high, chochBear ? "CHoCH" : "BOS",
+if showStruct and (bosBear or chochBear or (not strictMode and interBear))
+    label.new(bar_index, high, chochBear ? "CHoCH" : bosBear ? "BOS" : "BRK",
          style = label.style_label_down, color = color.new(#f23645, 20),
          textcolor = color.white, size = size.tiny)
 
@@ -233,6 +248,16 @@ hasFVGBetween(obOff, wantBull) =>
 
 if breakBull or breakBear
     obOff = findOB(breakBull)
+
+    // ── Mode diagnostic ──────────────────────────────────────────────
+    // Sans ca, un OB absent est indiscernable d'un OB jamais cherche.
+    if debugMode and obOff <= 0
+        label.new(bar_index, breakBull ? low : high,
+             "✕ aucune bougie opposée\ndans " + str.tostring(obLookback) + " bougies",
+             style = breakBull ? label.style_label_up : label.style_label_down,
+             color = color.new(color.orange, 20), textcolor = color.white,
+             size = size.tiny)
+
     if obOff > 0
         obTop = useBody ? math.max(open[obOff], close[obOff]) : high[obOff]
         obBot = useBody ? math.min(open[obOff], close[obOff]) : low[obOff]
@@ -240,6 +265,14 @@ if breakBull or breakBear
         // Filtre d'impulsion : déplacement OB → cassure en multiples d'ATR
         imp = breakBull ? (high - obBot) : (obTop - low)
         impOK = atrV > 0 and imp >= minImpATR * atrV
+
+        if debugMode and not impOK
+            label.new(bar_index, breakBull ? low : high,
+                 "✕ impulsion " + str.tostring(atrV > 0 ? imp / atrV : 0, "#.##")
+                 + " × ATR\n(minimum " + str.tostring(minImpATR, "#.##") + ")",
+                 style = breakBull ? label.style_label_up : label.style_label_down,
+                 color = color.new(color.orange, 20), textcolor = color.white,
+                 size = size.tiny)
 
         if impOK
             // ── Classement A+ / A / B ────────────────────────────────────
@@ -260,6 +293,12 @@ if breakBull or breakBear
             aligned = breakBull ? (not useHTF or htfBull) : (not useHTF or htfBear)
 
             rank = inOTE and hasFVG and swept ? "A+" : hasFVG and aligned ? "A" : "B"
+
+            if debugMode and onlyGood and rank == "B"
+                label.new(bar_index, breakBull ? low : high, "✕ rang B masqué",
+                     style = breakBull ? label.style_label_up : label.style_label_down,
+                     color = color.new(color.orange, 20), textcolor = color.white,
+                     size = size.tiny)
 
             if not (onlyGood and rank == "B")
                 bx = box.new(bar_index - obOff, obTop, bar_index + extendBars, obBot,

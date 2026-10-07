@@ -25,6 +25,25 @@ structure** — jamais au moment où la bougie se forme. C'est l'erreur n°1 des
 scanners SMC : marquer l'OB à son origine donne un graphique où toutes les
 zones ont « fonctionné », et un indicateur qui échoue en direct.
 
+## Pourquoi un Order Block évident n'est pas détecté
+
+Quatre causes possibles, dans l'ordre de fréquence mesurée sur 588 732 bougies
+M1 XAUUSD :
+
+1. **Cassure intermédiaire ignorée** — le sommet de référence cède, mais sans
+   atteindre le niveau CHoCH. Mesuré : **831 cassures en M15, 150 en H1**, soit
+   environ une sur trois. Décocher *CHoCH strict* (défaut) pour les capturer.
+2. **Filtre d'impulsion** — `minImpATR = 1.5` rejette **~27 % des cassures**.
+   Baisser à 1.0 élargit nettement la détection.
+3. **Zone déjà mitigée** — avec *Supprimer les zones mitigées*, un OB touché une
+   seule fois disparaît. Mesuré : **93 % des OB H1 sont revisités**, délai médian
+   11 bougies. Décocher pour les garder en gris.
+4. **Purge FIFO** — au-delà de `maxOB`, les plus anciens sont effacés.
+
+**Mode diagnostic** : cocher *Mode diagnostic* étiquette chaque cassure dont
+l'OB a été rejeté, avec la raison exacte et la valeur mesurée. C'est la
+façon de trancher en dix secondes au lieu de deviner.
+
 ## Classement
 
 - **A+** : non mitigé + en zone OTE (0.618–0.786) + FVG entre l'OB et la cassure + balayage de liquidité de session dans la fenêtre
