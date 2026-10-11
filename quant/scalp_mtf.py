@@ -138,6 +138,9 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     ll = m1.low.to_numpy(); cc = m1.close.to_numpy()
     i1 = m1.index
     sh1, sl1 = _swings(hh, ll, cfg.fractal_k)
+    # Pivots M5, pour savoir si l'impulsion a casse une structure anterieure
+    sh5, sl5 = _swings(h5, l5, cfg.fractal_k)
+    vol5 = m5["tickvol"].to_numpy() if "tickvol" in m5.columns else None
     pos1 = i1.values.astype("datetime64[ns]")
 
     actifs = set(cfg.confirm_types)
@@ -259,6 +262,39 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
             ob_plus = bool((l5[ob + 2] > h5[ob]) if d > 0
                            else (h5[ob + 2] < l5[ob]))
 
+        # --- ATTRIBUTS MESURABLES DE LA ZONE -------------------------------
+        # Chacun est enregistre, aucun ne filtre. Le but est de savoir si
+        # l'un d'eux separe les zones rentables des autres : si aucun ne le
+        # fait, aucune selection ne peut sauver la methode.
+        a_imp = abs(move) / atr5[i]                      # force de l'impulsion
+        a_zone = (ob_hi - ob_lo) / atr5[i]               # epaisseur de la zone
+        a_corps = ((abs(c5[ob] - o5[ob]) / (h5[ob] - l5[ob]))
+                   if h5[ob] > l5[ob] else 0.0)          # corps / amplitude
+        a_jambe = abs(c5[i] - (ob_lo if d > 0 else ob_hi)) / atr5[i]
+        a_age5 = i - ob                                  # bougies depuis l'OB
+        # L'impulsion a-t-elle depasse le dernier pivot de meme sens ?
+        a_bos = 0
+        for k in range(i - 1, max(i - 60, 1), -1):
+            if d > 0 and sh5[k]:
+                a_bos = 1 if c5[i] > h5[k] else 0
+                break
+            if d < 0 and sl5[k]:
+                a_bos = 1 if c5[i] < l5[k] else 0
+                break
+        # Volume de la bougie d'Order Block, rapporte a sa moyenne locale
+        a_vol = np.nan
+        if vol5 is not None and ob > 50:
+            moy = np.nanmean(vol5[ob - 50:ob])
+            if moy > 0:
+                a_vol = vol5[ob] / moy
+        # Position dans la fourchette du jour, au moment de la detection
+        deb = i
+        while deb > 0 and i5[deb - 1].normalize() == day:
+            deb -= 1
+        hj, lj = np.max(h5[deb:i + 1]), np.min(l5[deb:i + 1])
+        a_pos = (c5[i] - lj) / (hj - lj) if hj > lj else 0.5
+        a_force = force[i] if not np.isnan(force[i]) else 0.0
+
         # --- retour dans la zone, surveille en M1 --------------------------
         start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
         end = min(start + cfg.poi_valid_bars * 5, n1)
@@ -267,6 +303,8 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
             if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
             if ll[j] <= ob_hi and hh[j] >= ob_lo: touch = j; break
         if touch < 0: rej["zone_non_touchee"] += 1; i += 1; continue
+        # Delai entre la creation de la zone et son premier contact
+        a_delai = (i1[touch] - i5[i]).total_seconds() / 60.0
 
         # --- confirmation en M1 -------------------------------------------
         entry_at, kind = -1, None
@@ -320,6 +358,10 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
                        "direction": "long" if d > 0 else "short",
                        "confirmation": kind, "stop_dist": risk,
                        "ob_plus": ob_plus,
+                       "a_imp": a_imp, "a_zone": a_zone, "a_corps": a_corps,
+                       "a_jambe": a_jambe, "a_age5": a_age5, "a_bos": a_bos,
+                       "a_vol": a_vol, "a_pos": a_pos, "a_force": a_force,
+                       "a_delai": a_delai,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
                        "exit": why, "equity": equity})
         if equity < 50: break
