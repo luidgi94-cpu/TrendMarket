@@ -65,6 +65,13 @@ class MTFConfig:
     ob_lookback: int = 20
     min_leg_bars: int = 2
     use_body: bool = False
+    # Part MAXIMALE du corps dans l'amplitude de la bougie d'Order Block.
+    # Une zone issue d'une bougie faite surtout de meche rapporte nettement
+    # plus qu'une zone issue d'une bougie pleine : R moyen +0.497 pour le
+    # quintile bas contre +0.195 pour le quintile haut, avec un ecart
+    # reproduit a trois decimales sur les deux moities de l'echantillon
+    # (-0.303 puis -0.304) et une progression monotone. A 1.0, aucun filtre.
+    max_body_frac: float = 1.0
 
     # Types de confirmation ACTIFS. Les mesurer en isolation plutot que par
     # elimination : la fonction s'arretant a la premiere trouvee, un type
@@ -270,6 +277,10 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         a_zone = (ob_hi - ob_lo) / atr5[i]               # epaisseur de la zone
         a_corps = ((abs(c5[ob] - o5[ob]) / (h5[ob] - l5[ob]))
                    if h5[ob] > l5[ob] else 0.0)          # corps / amplitude
+        if cfg.max_body_frac < 1.0 and a_corps > cfg.max_body_frac:
+            rej["corps_trop_plein"] = rej.get("corps_trop_plein", 0) + 1
+            i += 1
+            continue
         a_jambe = abs(c5[i] - (ob_lo if d > 0 else ob_hi)) / atr5[i]
         a_age5 = i - ob                                  # bougies depuis l'OB
         # L'impulsion a-t-elle depasse le dernier pivot de meme sens ?

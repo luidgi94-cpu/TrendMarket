@@ -1,0 +1,75 @@
+588,732 bougies M1 | seuil de force 0, sans prise partielle
+Dix attributs enregistres par zone, aucun ne filtre.
+'ecart' = R du quintile haut moins R du quintile bas.
+'net'   = cet ecart moins celui des temoins. Seul 'net' mesure
+          de l'information ; 'ecart' seul recompense la geometrie.
+'rho'   = regularite de la progression entre quintiles, de -1 a +1.
+
+ECHANTILLON COMPLET (436 jours)
+  4198 trades reels, 4 temoins
+  attribut                         Q1     Q3     Q5   ecart  temoin   net    rho
+  ----------------------------------------------------------------------------
+  amplitude de l'impulsion       +0.246 +0.256 +0.312 +0.067 +0.040 +0.027 +0.91
+  epaisseur de la zone           +0.324 +0.275 +0.185 -0.139 -0.064 -0.075 -0.86
+  corps / amplitude de l'OB      +0.497 +0.258 +0.195 -0.302 -0.052 -0.250 -0.83
+  distance parcourue             +0.278 +0.216 +0.266 -0.012 +0.006 -0.018 -0.37
+  age de l'OB a l'impulsion      (pas assez de valeurs distinctes)
+  cassure de structure           (pas assez de valeurs distinctes)
+  volume de la bougie OB         +0.226 +0.289 +0.166 -0.060 -0.071 +0.011 -0.41
+  position dans le jour          +0.343 +0.248 +0.416 +0.073 +0.070 +0.003 +0.23
+  nettete de la tendance         +0.197 +0.379 +0.280 +0.083 +0.217 -0.135 +0.45
+  delai avant le contact         +0.310 +0.145 +0.249 -0.061 -0.192 +0.131 -0.36
+
+PREMIERE MOITIE
+  2057 trades reels, 4 temoins
+  attribut                         Q1     Q3     Q5   ecart  temoin   net    rho
+  ----------------------------------------------------------------------------
+  amplitude de l'impulsion       +0.365 +0.341 +0.367 +0.002 +0.075 -0.073 +0.41
+  epaisseur de la zone           +0.495 +0.391 +0.248 -0.246 -0.012 -0.234 -0.88
+  corps / amplitude de l'OB      +0.652 +0.337 +0.349 -0.303 -0.238 -0.065 -0.71
+  distance parcourue             +0.274 +0.328 +0.276 +0.002 +0.072 -0.070 +0.03
+  age de l'OB a l'impulsion      (pas assez de valeurs distinctes)
+  cassure de structure           (pas assez de valeurs distinctes)
+  volume de la bougie OB         +0.440 +0.318 +0.356 -0.084 -0.036 -0.048 -0.71
+  position dans le jour          +0.454 +0.354 +0.677 +0.223 +0.016 +0.207 +0.30
+  nettete de la tendance         +0.348 +0.344 +0.342 -0.006 -0.146 +0.140 -0.21
+  delai avant le contact         +0.446 +0.258 +0.304 -0.142 -0.178 +0.036 -0.72
+
+SECONDE MOITIE
+  2127 trades reels, 4 temoins
+  attribut                         Q1     Q3     Q5   ecart  temoin   net    rho
+  ----------------------------------------------------------------------------
+  amplitude de l'impulsion       +0.140 +0.195 +0.212 +0.072 -0.011 +0.082 +0.48
+  epaisseur de la zone           +0.183 +0.135 +0.134 -0.050 -0.081 +0.031 -0.39
+  corps / amplitude de l'OB      +0.301 +0.158 -0.004 -0.304 -0.167 -0.138 -0.99
+  distance parcourue             +0.208 +0.101 +0.225 +0.017 +0.047 -0.031 -0.18
+  age de l'OB a l'impulsion      (pas assez de valeurs distinctes)
+  cassure de structure           (pas assez de valeurs distinctes)
+  volume de la bougie OB         +0.181 +0.200 +0.120 -0.061 +0.053 -0.113 -0.38
+  position dans le jour          +0.258 +0.172 +0.094 -0.164 +0.053 -0.217 -0.28
+  nettete de la tendance         +0.089 +0.214 +0.159 +0.070 +0.003 +0.067 +0.67
+  delai avant le contact         +0.175 +0.007 +0.217 +0.042 -0.160 +0.201 +0.19
+
+
+CE QUI TIENT SUR LES DEUX MOITIES
+  attribut                      net complet   1re    2e    verdict
+  ------------------------------------------------------------------------
+  amplitude de l'impulsion       +0.027    -0.073 +0.082  s'inverse
+  epaisseur de la zone           -0.075    -0.234 +0.031  s'inverse
+  corps / amplitude de l'OB      -0.250    -0.065 -0.138  MEME SENS
+  distance parcourue             -0.018    -0.070 -0.031  MEME SENS
+  volume de la bougie OB         +0.011    -0.048 -0.113  MEME SENS
+  position dans le jour          +0.003    +0.207 -0.217  s'inverse
+  nettete de la tendance         -0.135    +0.140 +0.067  MEME SENS
+  delai avant le contact         +0.131    +0.036 +0.201  MEME SENS
+
+VERDICT
+  Attributs dont la separation garde le meme sens sur les deux
+  moities :
+    corps / amplitude de l'OB      net -0.250  (-0.065 puis -0.138)
+    distance parcourue             net -0.018  (-0.070 puis -0.031)
+    volume de la bougie OB         net +0.011  (-0.048 puis -0.113)
+    nettete de la tendance         net -0.135  (+0.140 puis +0.067)
+    delai avant le contact         net +0.131  (+0.036 puis +0.201)
+  A confirmer en construisant un filtre sur le ou les meilleurs,
+  puis en le mesurant hors echantillon comme le reste.
