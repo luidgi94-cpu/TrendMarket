@@ -1,0 +1,45 @@
+588,732 bougies M1 | filtre applique A LA DETECTION,
+donc le deroulement change : refuser une zone libere la place.
+
+ECHANTILLON COMPLET  (436 jours)
+  corps max      n   freq    WR     R reel   temoin   ecart     t
+  ------------------------------------------------------------------
+  aucun filtre  4198  9.63  37.5%  +0.266  +0.278  -0.012  -0.44
+  <= 0.6      3402  7.80  37.7%  +0.258  +0.262  -0.004  -0.12
+  <= 0.5      2948  6.76  36.3%  +0.216  +0.230  -0.014  -0.45
+  <= 0.4      2442  5.60  36.8%  +0.232  +0.190  +0.042  +1.18
+  <= 0.3      1877  4.31  36.3%  +0.209  +0.149  +0.060  +1.48
+
+PREMIERE MOITIE  (216 jours)
+  corps max      n   freq    WR     R reel   temoin   ecart     t
+  ------------------------------------------------------------------
+  aucun filtre  2057  9.52  41.0%  +0.381  +0.303  +0.078  +1.95
+  <= 0.6      1691  7.83  40.2%  +0.336  +0.274  +0.062  +1.42
+  <= 0.5      1479  6.85  38.7%  +0.283  +0.245  +0.037  +0.81
+  <= 0.4      1250  5.79  39.8%  +0.314  +0.237  +0.077  +1.52
+  <= 0.3       958  4.44  38.8%  +0.272  +0.235  +0.037  +0.64
+
+SECONDE MOITIE  (221 jours)
+  corps max      n   freq    WR     R reel   temoin   ecart     t
+  ------------------------------------------------------------------
+  aucun filtre  2127  9.62  33.9%  +0.151  +0.266  -0.115  -3.09
+  <= 0.6      1694  7.67  34.8%  +0.173  +0.260  -0.087  -2.09
+  <= 0.5      1453  6.57  33.4%  +0.139  +0.238  -0.099  -2.20
+  <= 0.4      1182  5.35  33.3%  +0.136  +0.227  -0.092  -1.83
+  <= 0.3       910  4.12  33.4%  +0.138  +0.178  -0.040  -0.70
+
+
+STABILITE
+  corps max    complet   1re      2e     freq    verdict
+  --------------------------------------------------------------
+  aucun      -0.012   +0.078  -0.115  9.63/j  s'inverse
+  <= 0.6     -0.004   +0.062  -0.087  7.80/j  s'inverse
+  <= 0.5     -0.014   +0.037  -0.099  6.76/j  s'inverse
+  <= 0.4     +0.042   +0.077  -0.092  5.60/j  s'inverse
+  <= 0.3     +0.060   +0.037  -0.040  4.31/j  s'inverse
+
+LECTURE
+  Reference sans filtre : ecart -0.012 R.
+  Un seuil n'apporte quelque chose que s'il fait MIEUX que cette
+  reference ET garde le meme sens sur les deux moities ET conserve
+  assez de trades pour etre tradable. Les trois conditions, pas une.

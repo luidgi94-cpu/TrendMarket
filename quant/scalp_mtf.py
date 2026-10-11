@@ -70,7 +70,13 @@ class MTFConfig:
     # plus qu'une zone issue d'une bougie pleine : R moyen +0.497 pour le
     # quintile bas contre +0.195 pour le quintile haut, avec un ecart
     # reproduit a trois decimales sur les deux moities de l'echantillon
-    # (-0.303 puis -0.304) et une progression monotone. A 1.0, aucun filtre.
+    # (-0.303 puis -0.304) et une progression monotone.
+    # MAIS, mesure comme FILTRE a la detection, l'effet ne se transforme pas
+    # en avantage : tous les seuils s'inversent entre les deux moities, de
+    # +0.078 a -0.115 sans filtre et de +0.037 a -0.040 au seuil le plus
+    # strict. Le filtre reduit le handicap de la periode recente des deux
+    # tiers sans jamais le renverser. Laisser a 1.0 : la forme classe les
+    # zones mais ne permet pas de les selectionner utilement.
     max_body_frac: float = 1.0
 
     # Types de confirmation ACTIFS. Les mesurer en isolation plutot que par
