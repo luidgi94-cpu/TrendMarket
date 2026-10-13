@@ -502,16 +502,59 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         a_force = force[i] if not np.isnan(force[i]) else 0.0
 
         # --- retour dans la zone, surveille en M1 --------------------------
-        start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
+        # ANTICIPATION CORRIGEE LE 13/10/2026, ET ELLE INVALIDE TOUT CE QUI
+        # PRECEDE. Un resample pandas etiquette ses bougies par leur bord
+        # GAUCHE : la bougie H1 marquee 01:00 ne cloture qu'a 02:00, sa
+        # derniere bougie M1 etant celle de 01:59. Le moteur calculait la
+        # zone a partir de c5[i], donc du prix de 01:59, puis cherchait le
+        # contact a partir de 01:01. Il disposait ainsi de cinquante-huit
+        # minutes d'avenir, et posait ses ordres limites a des niveaux qu'il
+        # ne pouvait connaitre qu'apres coup.
+        # Le biais croit avec l'unite de detection : quatre minutes en M5,
+        # cinquante-huit en H1, deux cent trente-neuf en H4. C'est
+        # exactement pourquoi H1 paraissait porter un avantage que M5
+        # n'avait pas, et pourquoi cet avantage resistait aux deux temoins.
+        # Mesure sur marche aleatoire sans derive, ou l'esperance doit etre
+        # nulle : derive de +8.34 USD dans les soixante-cinq minutes suivant
+        # l'entree, avec un t de 16.7, et un taux de reussite de 47% sur une
+        # cible a 2 R la ou la theorie impose 33.3%.
+        start = np.searchsorted(
+            pos1,
+            (i5[i] + pd.Timedelta(minutes=cfg.tf_minutes)).to_datetime64(),
+            side="left")
         end = min(start + cfg.poi_valid_bars * cfg.tf_minutes, n1)
         touch = -1
         marge = cfg.fill_margin_usd if cfg.entry_mode == "contact" else 0.0
         seuil_hi = ob_hi - marge
         seuil_lo = ob_lo + marge
+        # BIAIS CORRIGE LE 13/10/2026, ET IL ETAIT GRAVE.
+        # L'ordre des deux tests etait inverse : l'abandon de la zone etait
+        # examine AVANT le contact. Pour un achat, une bougie dont le bas
+        # descend sous le plancher de la zone a forcement traverse son
+        # plafond, donc un ordre limite pose la aurait ete REMPLI, puis
+        # stoppe. Le moteur refusait cette entree : il ecartait ainsi
+        # precisement les perdants les plus rapides, ceux dont la minute
+        # d'entree emporte deja le stop. C'est une anticipation, puisque la
+        # decision d'entrer utilisait la suite de la bougie en cours.
+        # Mesure du biais sur une marche aleatoire sans derive ni frais, ou
+        # l'esperance doit etre nulle : +0.519 R par trade avec une cible a
+        # 2 R, et un taux de reussite de 50.6% la ou la theorie impose 33.3%.
+        # Tous les R absolus publies avant cette date sont donc gonfles.
+        #
+        # Un ordre LIMITE est rempli des que le prix touche son niveau, sans
+        # condition sur la suite de la bougie : le contact passe donc en
+        # premier. En mode confirmation, en revanche, on observe la zone sans
+        # s'engager, et constater son invalidation avant d'entrer est
+        # legitime : l'abandon garde alors sa priorite.
+        immediat = cfg.entry_mode == "contact" or not cfg.require_confirm
         for j in range(start, end):
-            if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
-            if (ll[j] <= seuil_hi) if d > 0 else (hh[j] >= seuil_lo):
-                touch = j; break
+            if immediat:
+                if (ll[j] <= seuil_hi) if d > 0 else (hh[j] >= seuil_lo):
+                    touch = j; break
+            else:
+                if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
+                if (ll[j] <= seuil_hi) if d > 0 else (hh[j] >= seuil_lo):
+                    touch = j; break
         if touch < 0: rej["zone_non_touchee"] += 1; i += 1; continue
         # Delai entre la creation de la zone et son premier contact
         a_delai = (i1[touch] - i5[i]).total_seconds() / 60.0
@@ -547,6 +590,10 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         else:
             target_px = entry_px + d * cfg.tp_r * risk
         tp_en_r = (target_px - entry_px) * d / risk
+        # Le stop est deplace au point mort apres une prise partielle, donc
+        # stop_px change en cours de route. On garde sa valeur d'origine pour
+        # pouvoir reverifier le trade apres coup.
+        stop_px0 = stop_px
         partial_px = entry_px + d * cfg.partial_r * risk
         be_px = entry_px + d * (cfg.spread_usd + cfg.slippage_usd)
 
@@ -586,6 +633,11 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
                        "a_vol": a_vol, "a_pos": a_pos, "a_force": a_force,
                        "a_delai": a_delai, "a_fib": a_fib, "a_liq": a_liq,
                        "a_propre": a_propre, "tp_en_r": tp_en_r,
+                       # Prix exposes pour permettre de REVERIFIER chaque
+                       # trade a la main, hors du moteur. Sans eux, un biais
+                       # de la mecanique de sortie reste indetectable.
+                       "i_entree": entry_at, "px_entree": entry_px,
+                       "px_stop": stop_px0, "px_cible": target_px,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
                        "exit": why, "equity": equity})
         if equity < 50: break
