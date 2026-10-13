@@ -1,0 +1,8 @@
+588,732 bougies M1 | detection H1, zone posee par geometrie
+
+
+=========  PROLONGEMENT DE LA GRILLE  =========
+
+ECHANTILLON COMPLET
+  essai                      n   freq    WR   stop    TP    R reel   temoin   ecart     t
+  ----------------------------------------------------------------------------------------

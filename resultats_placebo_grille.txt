@@ -58,3 +58,56 @@ SECONDE MOITIE  (221 jours)
   2.10   1.20       149  0.67  86.6%  +0.199  +0.109  +0.090  +2.19
   2.50   0.60       115  0.52  70.4%  +0.167  +0.150  +0.017  +0.23
   2.50   0.90       119  0.54  80.7%  +0.185  +0.149  +0.036  +0.65
+  2.50   1.20       119  0.54  84.9%  +0.186  +0.160  +0.026  +0.50
+
+
+CARTES DE L'ECART AU TEMOIN
+
+  echantillon complet
+  recul \ epaiss.     0.60     0.90     1.20
+            1.20   +0.250   +0.221   +0.189
+            1.50   +0.248   +0.228   +0.141
+            1.80   +0.248   +0.160   +0.126
+            2.10   +0.150   +0.131   +0.123
+            2.50   +0.045   +0.072   +0.066
+
+  premiere moitie
+  recul \ epaiss.     0.60     0.90     1.20
+            1.20   +0.324   +0.314   +0.275
+            1.50   +0.388   +0.328   +0.237
+            1.80   +0.355   +0.248   +0.149
+            2.10   +0.211   +0.121   +0.104
+            2.50   +0.041   +0.069   +0.051
+
+  seconde moitie
+  recul \ epaiss.     0.60     0.90     1.20
+            1.20   +0.085   +0.063   +0.044
+            1.50   +0.159   +0.142   +0.080
+            1.80   +0.159   +0.086   +0.079
+            2.10   +0.062   +0.082   +0.090
+            2.50   +0.017   +0.036   +0.026
+
+
+COUPLES POSITIFS SUR LES DEUX MOITIES
+  15 sur 15 couples testes.
+    recul 1.20 ATR, epaisseur 0.60 ATR : +0.250   (+0.324 puis +0.085)
+    recul 1.80 ATR, epaisseur 0.60 ATR : +0.248   (+0.355 puis +0.159)
+    recul 1.50 ATR, epaisseur 0.60 ATR : +0.248   (+0.388 puis +0.159)
+    recul 1.50 ATR, epaisseur 0.90 ATR : +0.228   (+0.328 puis +0.142)
+    recul 1.20 ATR, epaisseur 0.90 ATR : +0.221   (+0.314 puis +0.063)
+    recul 1.20 ATR, epaisseur 1.20 ATR : +0.189   (+0.275 puis +0.044)
+    recul 1.80 ATR, epaisseur 0.90 ATR : +0.160   (+0.248 puis +0.086)
+    recul 2.10 ATR, epaisseur 0.60 ATR : +0.150   (+0.211 puis +0.062)
+    recul 1.50 ATR, epaisseur 1.20 ATR : +0.141   (+0.237 puis +0.080)
+    recul 2.10 ATR, epaisseur 0.90 ATR : +0.131   (+0.121 puis +0.082)
+    recul 1.80 ATR, epaisseur 1.20 ATR : +0.126   (+0.149 puis +0.079)
+    recul 2.10 ATR, epaisseur 1.20 ATR : +0.123   (+0.104 puis +0.090)
+    recul 2.50 ATR, epaisseur 0.90 ATR : +0.072   (+0.069 puis +0.036)
+    recul 2.50 ATR, epaisseur 1.20 ATR : +0.066   (+0.051 puis +0.026)
+    recul 2.50 ATR, epaisseur 0.60 ATR : +0.045   (+0.041 puis +0.017)
+
+  Verifier que ces couples se touchent sur la carte. Une plage
+  continue est le signe d'un effet reel ; des cases dispersees
+  restent du hasard, meme nombreuses.
+
+  (391s)
