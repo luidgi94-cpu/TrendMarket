@@ -1,0 +1,12 @@
+588,732 bougies M1 | VWAP de seance, bandes a k ecarts-types
+MOTEUR VALIDE : rend +0.015 R (t 0.81) sur marche aleatoire sans
+derive, ou la reponse doit etre zero. Il ne fabrique pas de gain.
+'WRseuil' = taux de reussite d'equilibre, soit 1/(1+cible). Un
+winrate superieur a ce seuil gagne, un winrate inferieur perd,
+quelle que soit son allure.
+
+ECHANTILLON COMPLET  (436 jours)
+  configuration                n   freq    WR  WRseuil  stop  cible    R    EUR/mois  temoin   ecart     t
+  --------------------------------------------------------------------------------------------------------
+  retour k=1.5                3734  8.56  18.9%   19.5%  3.83  4.13R -0.162     -131  -0.020  -0.142  -4.34
+  retour k=2.0                3094  7.10  16.7%   17.1%  3.80  4.86R -0.165     -111  +0.000  -0.165  -4.28
