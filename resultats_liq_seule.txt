@@ -10,3 +10,4 @@ ECHANTILLON COMPLET  (436 jours)
   liquidite ABSENTE exigee        2756  6.32  48.0%  4.81  +0.418  +0.435  -0.017  -0.46
   liquidite PRESENTE exigee       4586 10.52  45.8%  4.32  +0.469  +0.520  -0.051  -1.71
   absente, tampon 0.25 ATR        4167  9.56  48.6%  4.62  +0.502  +0.495  +0.007  +0.21
+  absente, tampon 1.00 ATR        1507  3.46  47.5%  5.26  +0.358  +0.298  +0.061  +1.16

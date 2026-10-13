@@ -40,3 +40,28 @@ SECONDE MOITIE  (221 jours)
   + liquidite absente            151  0.68  39.7%  5.62 1.78R  -0.054  +0.057  -0.111  -1.03
   + discount / premium  = TOUS   133  0.60  38.3%  5.68 1.76R  -0.134  +0.084  -0.218  -2.01
   TOUS, liquidite EXIGEE         212  0.96  38.7%  4.64 2.16R  +0.132  +0.093  +0.039  +0.35
+  TOUS, TP 50 pips               133  0.60  54.9%  5.68 0.88R  -0.080  +0.011  -0.091  -1.13
+  TOUS, TP 200 pips              133  0.60  30.1%  5.68 3.52R  +0.006  +0.148  -0.142  -0.91
+
+
+STABILITE  (le critere qui a elimine les neuf familles precedentes)
+  configuration                complet    1re      2e     freq    verdict
+  ----------------------------------------------------------------------------------
+  reference 3 R, confirmation  -0.015   +0.032  -0.129  13.41/j  s'inverse
+  contact + TP 100 pips        -0.019   +0.034  -0.074  14.36/j  s'inverse
+  + imbalance                  -0.060   -0.064  -0.076   2.28/j  negatif des deux cotes
+  + impulsion propre           -0.075   -0.092  -0.010   1.66/j  negatif des deux cotes
+  + liquidite absente          -0.142   -0.141  -0.111   0.71/j  negatif des deux cotes
+  + discount / premium  = TOUS -0.179   -0.162  -0.218   0.62/j  negatif des deux cotes
+  TOUS, liquidite EXIGEE       -0.041   -0.117  +0.039   0.99/j  s'inverse
+  TOUS, TP 50 pips             -0.107   -0.025  -0.091   0.62/j  negatif des deux cotes
+  TOUS, TP 200 pips            -0.049   -0.203  -0.142   0.62/j  negatif des deux cotes
+
+TAILLE D'ECHANTILLON NECESSAIRE
+  Pour distinguer un ecart reel d'un hasard, il faut environ
+  n = (1.96 x ecart-type / ecart)^2 trades. Avec un ecart-type de
+  1.2 R, un ecart de +0.10 R demande 553 trades, un ecart de
+  +0.05 R en demande 2213. A 0.6 trade par jour, cela fait
+  respectivement trois ans et douze ans de forward test.
+
+  (729s)
