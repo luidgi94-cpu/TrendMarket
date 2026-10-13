@@ -1,0 +1,58 @@
+588,732 bougies M1, du 09/01/2025 au 16/09/2026
+
+LA DERIVE DE L'OR SUR LA PERIODE
+  prix au depart      2661.55 USD l'once
+  prix a l'arrivee    4336.94
+  variation          +1675.39 USD, soit +62.9%
+  Une permutation des bougies ne change pas cette somme : le
+  temoin a connu exactement la meme derive que le reel.
+
+
+LE GAIN PAR SENS  (6262 trades)
+  sens      n     part     WR      R moyen    contribution
+  ------------------------------------------------------------
+  long      3822   61.0%   48.6%     +0.597        +0.365
+  short     2440   39.0%   53.5%     +0.569        +0.222
+  ensemble  6262  100.0%   50.5%     +0.586
+  'contribution' = R moyen du sens pondere par sa part. Si tout le
+  gain est du cote achat, il s'agit de la derive de l'or, pas de
+  la detection des zones.
+
+
+MOIS PAR MOIS
+  mois      or (USD)    n     WR     R reel   R temoin   ecart     EUR
+  ------------------------------------------------------------------------
+/home/user/TrendMarket/test_dou_vient_le_gain.py:98: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
+  gr = reel.groupby(reel.entry_ts.dt.to_period("M"))
+/home/user/TrendMarket/test_dou_vient_le_gain.py:99: UserWarning: Converting to PeriodArray/Index representation will drop timezone information.
+  gt = tem.groupby(tem.entry_ts.dt.to_period("M"))
+  2025-01       +nan   247  25.9%   +0.140    +0.339   -0.199     +156
+  2025-02       +nan   313  42.8%   +0.896    +0.546   +0.351    +1262
+  2025-03       +nan   331  45.6%   +0.961    +0.572   +0.388    +1431
+  2025-04       +nan   320  51.9%   +0.545    +0.608   -0.063     +785
+  2025-05       +nan   311  39.5%   +0.304    +0.749   -0.445     +426
+  2025-06       +nan   273  40.3%   +0.540    +0.685   -0.145     +663
+  2025-07       +nan   311  42.1%   +0.938    +0.450   +0.488    +1313
+  2025-08       +nan   283  44.5%   +1.061    +0.479   +0.581    +1351
+  2025-09       +nan   337  51.0%   +1.051    +0.692   +0.359    +1593
+  2025-10       +nan   342  60.2%   +0.757    +0.709   +0.048    +1165
+  2025-11       +nan   323  51.1%   +0.483    +0.817   -0.334     +702
+  2025-12       +nan   331  47.7%   +0.471    +0.782   -0.311     +701
+  2026-01       +nan   325  61.2%   +0.585    +0.579   +0.007     +856
+  2026-02       +nan   254  61.4%   +0.291    +0.798   -0.506     +333
+  2026-03       +nan   301  70.8%   +0.386    +0.582   -0.196     +523
+  2026-04       +nan   299  61.2%   +0.534    +0.563   -0.029     +718
+  2026-05       +nan   292  51.7%   +0.335    +0.700   -0.364     +441
+  2026-06       +nan   303  56.8%   +0.447    +0.636   -0.189     +610
+  2026-07       +nan   330  50.6%   +0.493    +0.575   -0.083     +731
+  2026-08       +nan   284  46.1%   +0.319    +0.516   -0.197     +408
+  2026-09       +nan   152  56.6%   +0.522    +0.781   -0.259     +357
+
+  Mois ou le reel fait mieux que le temoin : 7 sur 21. Le hasard en donnerait la moitie.
+
+
+CE QU'UN COMPTE DE 450 EUROS SUBIRAIT
+  reel     pire recul   -58.00 R  soit     -261 EUR  (-58% du compte), sur 131 trades
+           14.4 trades par jour a 1% de risque = 14% du capital engage par jour
+  temoin   pire recul   -24.27 R  soit     -109 EUR  (-24% du compte), sur 27 trades
+           14.1 trades par jour a 1% de risque = 14% du capital engage par jour

@@ -16,3 +16,37 @@ ECHANTILLON COMPLET  (436 jours)
 PREMIERE MOITIE  (216 jours)
   configuration                     n   freq    WR   stop   R reel   temoin   ecart     t
   ------------------------------------------------------------------------------------
+  sans aucun critere              3119 14.44  45.0%  3.20  +0.726  +0.693  +0.034  +0.76
+  liquidite ABSENTE exigee        1434  6.64  40.7%  3.40  +0.465  +0.498  -0.033  -0.53
+  liquidite PRESENTE exigee       2252 10.43  40.5%  2.97  +0.598  +0.558  +0.041  +0.80
+  absente, tampon 0.25 ATR        2145  9.93  42.1%  3.23  +0.590  +0.608  -0.019  -0.36
+  absente, tampon 1.00 ATR         772  3.57  40.0%  3.68  +0.391  +0.417  -0.026  -0.31
+  absente + marge de remplissage  1384  6.41  39.7%  3.39  +0.429  +0.470  -0.041  -0.65
+
+SECONDE MOITIE  (221 jours)
+  configuration                     n   freq    WR   stop   R reel   temoin   ecart     t
+  ------------------------------------------------------------------------------------
+  sans aucun critere              3106 14.05  56.0%  6.25  +0.439  +0.513  -0.074  -2.66
+  liquidite ABSENTE exigee        1309  5.92  55.8%  6.81  +0.355  +0.415  -0.060  -1.40
+  liquidite PRESENTE exigee       2306 10.43  50.9%  5.94  +0.337  +0.440  -0.104  -3.24
+  absente, tampon 0.25 ATR        2003  9.06  55.2%  6.51  +0.395  +0.458  -0.062  -1.79
+  absente, tampon 1.00 ATR         731  3.31  55.1%  7.24  +0.315  +0.323  -0.008  -0.13
+  absente + marge de remplissage  1289  5.83  55.2%  6.80  +0.341  +0.400  -0.060  -1.40
+
+
+STABILITE
+  configuration                  complet    1re      2e     freq    verdict
+  --------------------------------------------------------------------------------
+  sans aucun critere             -0.019   +0.034  -0.074  14.36/j  s'inverse
+  liquidite ABSENTE exigee       -0.017   -0.033  -0.060   6.32/j  negatif des deux cotes
+  liquidite PRESENTE exigee      -0.051   +0.041  -0.104  10.52/j  s'inverse
+  absente, tampon 0.25 ATR       +0.007   -0.019  -0.062   9.56/j  negatif des deux cotes
+  absente, tampon 1.00 ATR       +0.061   -0.026  -0.008   3.46/j  negatif des deux cotes
+  absente + marge de remplissage -0.024   -0.041  -0.060   6.16/j  negatif des deux cotes
+
+  Reference sans aucun critere : ecart -0.019 R. Un filtre
+  n'apporte quelque chose que s'il fait MIEUX que cette reference,
+  garde le meme sens sur les deux moities, et conserve assez de
+  trades pour etre tradable. Les trois conditions, pas une.
+
+  (716s)

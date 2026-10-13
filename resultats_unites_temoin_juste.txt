@@ -1,0 +1,8 @@
+588,732 bougies M1 | sans filtre, entree au contact, cible 100 pips
+Comparer la colonne 'stop' du reel a celle de chaque temoin : si
+elles divergent, les deux systemes ne jouent pas la meme geometrie
+et l'ecart mesure ne veut rien dire.
+
+ECHANTILLON COMPLET  (436 jours)
+  unite     n    WR    stop     R reel  | temoin BARS  stop  ecart    t  | temoin BLOCS  stop  ecart    t
+  --------------------------------------------------------------------------------------------------------

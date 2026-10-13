@@ -10,3 +10,61 @@ ECHANTILLON COMPLET  (436 jours)
   ----------------------------------------------------------------------------------------------
   M5     sans filtre           6262 14.36  50.5%  4.56  2.19R +0.586      +796   +0.605  -0.019  -0.71
   M5     tous les criteres      271  0.62  31.4%  3.97  2.52R -0.096        -6   +0.083  -0.179  -1.72
+  M15    sans filtre           2268  5.20  61.8%  7.53  1.33R +0.483      +238   +0.480  +0.004  +0.11
+  M15    tous les criteres       90  0.21  41.1%  7.21  1.39R -0.084        -2   -0.029  -0.055  -0.40
+  M30    sans filtre           1184  2.72  68.6% 10.78  0.93R +0.381       +98   +0.390  -0.010  -0.29
+  M30    tous les criteres       49  0.11  57.1%  9.85  1.02R +0.169        +2   +0.068  +0.101  +0.62
+  H1     sans filtre            575  1.32  79.1% 13.76  0.73R +0.440       +55   +0.277  +0.163  +4.02
+  H1     tous les criteres       24  (trop peu de trades pour conclure)
+  H4     sans filtre            140  0.32  83.6% 27.65  0.36R +0.179        +5   +0.191  -0.012  -0.24
+  H4     tous les criteres        6  (trop peu de trades pour conclure)
+
+PREMIERE MOITIE  (216 jours)
+  unite  configuration          n   freq    WR   stop    TP    R      EUR/mois   temoin   ecart     t
+  ----------------------------------------------------------------------------------------------
+  M5     sans filtre           3119 14.44  45.0%  3.20  3.12R +0.726      +991   +0.693  +0.034  +0.76
+  M5     tous les criteres      137  0.63  24.1%  2.57  3.90R -0.089        -5   +0.073  -0.162  -0.93
+  M15    sans filtre           1181  5.47  56.7%  5.31  1.88R +0.604      +312   +0.540  +0.064  +1.27
+  M15    tous les criteres       50  0.23  28.0%  4.88  2.05R -0.207        -5   +0.178  -0.385  -1.80
+  M30    sans filtre            599  2.77  62.6%  7.39  1.35R +0.470      +123   +0.456  +0.014  +0.25
+  M30    tous les criteres       25  (trop peu de trades pour conclure)
+  H1     sans filtre            278  1.29  73.4%  8.98  1.11R +0.565       +69   +0.398  +0.167  +2.30
+  H1     tous les criteres       15  (trop peu de trades pour conclure)
+  H4     sans filtre             74  0.34  77.0% 19.20  0.52R +0.174        +6   +0.260  -0.086  -1.04
+  H4     tous les criteres        3  (trop peu de trades pour conclure)
+
+SECONDE MOITIE  (221 jours)
+  unite  configuration          n   freq    WR   stop    TP    R      EUR/mois   temoin   ecart     t
+  ----------------------------------------------------------------------------------------------
+  M5     sans filtre           3106 14.05  56.0%  6.25  1.60R +0.439      +583   +0.513  -0.074  -2.66
+  M5     tous les criteres      133  0.60  38.3%  5.68  1.76R -0.134        -8   +0.084  -0.218  -2.01
+  M15    sans filtre           1073  4.86  67.2% 10.78  0.93R +0.345      +158   +0.408  -0.063  -1.81
+  M15    tous les criteres       40  0.18  57.5% 10.88  0.92R +0.070        +1   +0.000  +0.070  +0.45
+  M30    sans filtre            573  2.59  74.9% 14.83  0.67R +0.287       +70   +0.304  -0.017  -0.46
+  M30    tous les criteres       24  (trop peu de trades pour conclure)
+  H1     sans filtre            292  1.32  84.9% 19.50  0.51R +0.324       +40   +0.223  +0.101  +2.63
+  H1     tous les criteres        8  (trop peu de trades pour conclure)
+  H4     sans filtre             62  0.28  90.3% 37.83  0.26R +0.174        +5   +0.088  +0.086  +1.57
+  H4     tous les criteres        3  (trop peu de trades pour conclure)
+
+
+RECAPITULATIF : RENTABILITE, WINRATE, ET CE QU'ELLE VAUT
+  unite  configuration            WR      R     EUR/mois   ecart temoin        verdict
+  ----------------------------------------------------------------------------------------
+  M5     sans filtre             50.5% +0.586      +796     -0.019        s'inverse
+  M5     tous les criteres       31.4% -0.096        -6     -0.179        negatif des deux cotes
+  M15    sans filtre             61.8% +0.483      +238     +0.004        s'inverse
+  M15    tous les criteres       41.1% -0.084        -2     -0.055        s'inverse
+  M30    sans filtre             68.6% +0.381       +98     -0.010        s'inverse
+  M30    tous les criteres       57.1% +0.169        +2     +0.101        indeterminable
+  H1     sans filtre             79.1% +0.440       +55     +0.163        POSITIF DES DEUX COTES
+  H4     sans filtre             83.6% +0.179        +5     -0.012        s'inverse
+
+  Le winrate et la rentabilite se lisent dans les deux premieres
+  colonnes. L'ecart au temoin dit si cette rentabilite vient d'une
+  lecture du marche ou seulement de la forme du pari : un systeme
+  qui gagne autant sur des bougies melangees ne gagnera pas en
+  reel, ou les bougies ne sont pas melangees mais ne se repetent
+  pas non plus.
+
+  (425s)
