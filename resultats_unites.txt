@@ -8,3 +8,5 @@ pas une prevision : l'ecart au temoin dit ce qu'elle vaut.
 ECHANTILLON COMPLET  (436 jours)
   unite  configuration          n   freq    WR   stop    TP    R      EUR/mois   temoin   ecart     t
   ----------------------------------------------------------------------------------------------
+  M5     sans filtre           6262 14.36  50.5%  4.56  2.19R +0.586      +796   +0.605  -0.019  -0.71
+  M5     tous les criteres      271  0.62  31.4%  3.97  2.52R -0.096        -6   +0.083  -0.179  -1.72
