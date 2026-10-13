@@ -75,7 +75,24 @@ class MTFConfig:
     # simples doublons, et les retirer coute de l'information. Le parametre
     # reste expose pour que le resultat puisse etre reproduit.
     dedup_overlap: float = 1.0
+    #   "placebo"  : AUCUN Order Block. La zone est posee a une distance
+    #                fixe en arriere de la fin de l'impulsion, avec une
+    #                epaisseur fixe, toutes deux reglees sur les medianes
+    #                mesurees des vraies zones. Tout le reste est identique :
+    #                meme filtre de tendance, meme condition d'impulsion,
+    #                meme entree au contact, meme stop sous la zone, meme
+    #                cible. Si ce placebo fait aussi bien que la vraie
+    #                detection, l'Order Block n'apporte rien et l'avantage
+    #                vient d'ailleurs.
     ob_mode: str = "fenetre"
+    placebo_jambe_atr: float = 1.80   # mediane de a_jambe mesuree en H1
+    placebo_zone_atr: float = 0.90    # mediane de a_zone mesuree en H1
+    # Remplace la tendance H1 par un tirage au sort, a graine fixe. Sert a
+    # savoir si l'avantage vient du filtre de tendance ou de la zone : le
+    # temoin par blocs detruit l'ordre des bougies, donc les DEUX a la fois,
+    # et ne permet pas de les distinguer.
+    trend_mode: str = "ema"           # "ema" | "aleatoire"
+    trend_seed: int = 0
     ob_lookback: int = 20
     min_leg_bars: int = 2
     use_body: bool = False
@@ -204,6 +221,16 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     trend = np.sign(spread).shift(1).reindex(i5, method="ffill").to_numpy()
     force = (spread.abs() / h1b.close.rolling(24).std()).shift(1).reindex(i5, method="ffill").to_numpy()
 
+    if cfg.trend_mode == "aleatoire":
+        # Direction tiree au sort, mais LISSEE sur la duree de vie d'une
+        # zone : un tirage bougie par bougie serait bien plus instable que
+        # la vraie tendance et biaiserait la comparaison. On tire un signe
+        # par tranche de poi_valid_bars bougies.
+        rng = np.random.default_rng(cfg.trend_seed)
+        pas = max(cfg.poi_valid_bars, 1)
+        tirage = rng.choice([-1.0, 1.0], size=len(i5) // pas + 2)
+        trend = tirage[np.arange(len(i5)) // pas]
+
     kz = np.zeros(len(i5), bool)
     for a, b in cfg.killzones:
         kz |= (hours5 >= a) & (hours5 < b)
@@ -290,7 +317,16 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
             i += 1; continue
 
         ob = -1
-        if cfg.ob_mode == "remontee":
+        if cfg.ob_mode == "placebo":
+            # Zone posee par simple geometrie, sans regarder les bougies.
+            bord = c5[i] - d * cfg.placebo_jambe_atr * atr5[i]
+            large = cfg.placebo_zone_atr * atr5[i]
+            if d > 0:
+                ob_lo, ob_hi = bord - large, bord
+            else:
+                ob_lo, ob_hi = bord, bord + large
+            ob = max(i - cfg.impulse_bars, 1)
+        elif cfg.ob_mode == "remontee":
             # Definition litterale : premiere bougie de couleur opposee en
             # remontant depuis la bougie courante.
             for j in range(i - 1, max(i - cfg.ob_lookback, 1), -1):
@@ -309,7 +345,9 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
                 if (c5[j] < o5[j]) if d > 0 else (c5[j] > o5[j]):
                     ob = j; break
         if ob < 0: rej["pas_dOB"] += 1; i += 1; continue
-        if cfg.use_body:
+        if cfg.ob_mode == "placebo":
+            pass                      # la zone est deja posee
+        elif cfg.use_body:
             ob_lo = min(o5[ob], c5[ob]); ob_hi = max(o5[ob], c5[ob])
         else:
             ob_lo = min(o5[ob], c5[ob], l5[ob]); ob_hi = max(o5[ob], c5[ob], h5[ob])

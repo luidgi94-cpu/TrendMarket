@@ -1,0 +1,9 @@
+588,732 bougies M1 | detection H1, zone posee par geometrie,
+aucun Order Block. 'recul' = distance en ATR entre la fin de
+l'impulsion et le bord de la zone. 'epaiss.' = epaisseur en ATR.
+Le reglage mesure sur les vraies zones etait 1.80 et 0.90.
+
+ECHANTILLON COMPLET  (436 jours)
+  recul  epaiss.     n   freq    WR     R reel   temoin   ecart     t
+  ------------------------------------------------------------------------
+  1.20   0.60       508  1.17  73.6%  +0.579  +0.329  +0.250  +4.81
