@@ -1,0 +1,10 @@
+588,732 bougies M1 | detection sur l'unite indiquee,
+GESTION EN M1 DANS TOUS LES CAS, pour que l'ordre entre le stop
+et la cible soit connu a l'interieur des grandes bougies.
+EUR/mois : 1% de risque sur 450 EUR, soit 4.50 EUR par trade,
+et 21 jours de bourse. C'est la rentabilite BRUTE du backtest,
+pas une prevision : l'ecart au temoin dit ce qu'elle vaut.
+
+ECHANTILLON COMPLET  (436 jours)
+  unite  configuration          n   freq    WR   stop    TP    R      EUR/mois   temoin   ecart     t
+  ----------------------------------------------------------------------------------------------

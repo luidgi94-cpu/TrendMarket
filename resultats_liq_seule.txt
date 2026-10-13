@@ -6,3 +6,7 @@ seul, confronte aux temoins, et dans les deux sens.
 ECHANTILLON COMPLET  (436 jours)
   configuration                     n   freq    WR   stop   R reel   temoin   ecart     t
   ------------------------------------------------------------------------------------
+  sans aucun critere              6262 14.36  50.5%  4.56  +0.586  +0.605  -0.019  -0.71
+  liquidite ABSENTE exigee        2756  6.32  48.0%  4.81  +0.418  +0.435  -0.017  -0.46
+  liquidite PRESENTE exigee       4586 10.52  45.8%  4.32  +0.469  +0.520  -0.051  -1.71
+  absente, tampon 0.25 ATR        4167  9.56  48.6%  4.62  +0.502  +0.495  +0.007  +0.21

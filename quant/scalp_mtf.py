@@ -43,8 +43,22 @@ class MTFConfig:
     min_trend_force: float = 1.0
     fractal_k: int = 2
 
-    impulse_bars: int = 5             # en bougies M5
+    impulse_bars: int = 5             # en bougies de l'unite de detection
     impulse_atr: float = 0.8
+
+    # --- UNITE DE DETECTION ------------------------------------------------
+    # Le moteur a longtemps suppose que les zones etaient detectees en M5.
+    # Ces deux champs rendent l'unite libre, pour pouvoir comparer M5, M15,
+    # M30, H1 et H4 sur les memes donnees. La gestion reste en M1 dans tous
+    # les cas : c'est la seule facon de savoir si le stop a ete touche avant
+    # la cible a l'interieur d'une grande bougie.
+    #   tf_minutes  duree d'une bougie de detection, en minutes
+    #   atr_bars    fenetre de l'ATR, en bougies de detection
+    # Les valeurs par defaut sont celles de M5 : 5 minutes, et 288 bougies
+    # soit vingt-quatre heures. Tous les resultats publies anterieurement
+    # restent donc reproductibles a l'identique.
+    tf_minutes: int = 5
+    atr_bars: int = 288
 
     # Mode de detection de l'Order Block.
     #   "fenetre"  : recherche dans une fenetre fixe situee cinq a quinze
@@ -181,7 +195,7 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     # --- contexte M5 -------------------------------------------------------
     o5 = m5.open.to_numpy(); h5 = m5.high.to_numpy()
     l5 = m5.low.to_numpy(); c5 = m5.close.to_numpy()
-    atr5 = _atr(m5, 288)
+    atr5 = _atr(m5, cfg.atr_bars)
     i5 = m5.index
     hours5 = i5.hour.to_numpy()
 
@@ -256,7 +270,10 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     zones_recentes: list = []
     rej = {"pas_dOB": 0, "zone_non_touchee": 0, "pas_de_confirmation": 0}
     n5 = len(i5); n1 = len(i1)
-    i = 300
+    # Echauffement : assez de bougies pour que l'ATR et la tendance H1 soient
+    # definis, sans gaspiller les donnees des grandes unites, ou 300 bougies
+    # representeraient des mois. Vaut 300 en M5, donc inchange pour lui.
+    i = min(300, max(cfg.atr_bars + 60, 50))
     while i < n5 - cfg.poi_valid_bars - 2:
         day = i5[i].normalize()
         if not kz[i] or np.isnan(atr5[i]) or atr5[i] <= 0:
@@ -448,7 +465,7 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
 
         # --- retour dans la zone, surveille en M1 --------------------------
         start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
-        end = min(start + cfg.poi_valid_bars * 5, n1)
+        end = min(start + cfg.poi_valid_bars * cfg.tf_minutes, n1)
         touch = -1
         marge = cfg.fill_margin_usd if cfg.entry_mode == "contact" else 0.0
         seuil_hi = ob_hi - marge
