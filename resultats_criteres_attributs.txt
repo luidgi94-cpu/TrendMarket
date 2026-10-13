@@ -1,0 +1,57 @@
+588,732 bougies M1 | entree au contact, cible 100 pips
+AUCUN critere ne filtre : la population complete est tradee et
+chaque critere est seulement enregistre. On mesure donc si le
+critere designe de meilleures zones, pas s'il ameliore le systeme.
+
+ECHANTILLON COMPLET (436 jours)
+  6262 trades reels, 4 temoins
+  critere                         n=0    n=1    R(0)    R(1)   ecart  temoin    net
+  ----------------------------------------------------------------------------------
+  imbalance generee              5858    404 +0.582 +0.656 +0.074  -0.111  +0.185
+  impulsion propre               6057    205 +0.583 +0.686 +0.103  -0.245  +0.348
+  liquidite juste au-dela        2131   4131 +0.644 +0.557 -0.087  -0.040  -0.046
+
+  position dans le mouvement, par quintile (Q1 = le plus en discount)
+    Q1 +0.457  Q2 +0.508  Q3 +0.421  Q4 +0.669  Q5 +0.877
+    ecart Q5-Q1 +0.420   temoin +0.402   net +0.018   rho +0.84
+
+PREMIERE MOITIE
+  3119 trades reels, 4 temoins
+  critere                         n=0    n=1    R(0)    R(1)   ecart  temoin    net
+  ----------------------------------------------------------------------------------
+  imbalance generee              2928    191 +0.721 +0.813 +0.093  +0.052  +0.041
+  impulsion propre               3031     88 +0.728 +0.673 -0.055  -0.166  +0.111
+  liquidite juste au-dela        1100   2019 +0.750 +0.714 -0.036  -0.136  +0.101
+
+  position dans le mouvement, par quintile (Q1 = le plus en discount)
+    Q1 +0.648  Q2 +0.725  Q3 +0.509  Q4 +0.702  Q5 +1.048
+    ecart Q5-Q1 +0.400   temoin +0.594   net -0.194   rho +0.62
+
+SECONDE MOITIE
+  3106 trades reels, 4 temoins
+  critere                         n=0    n=1    R(0)    R(1)   ecart  temoin    net
+  ----------------------------------------------------------------------------------
+  imbalance generee              2895    211 +0.436 +0.481 +0.046  -0.039  +0.085
+  impulsion propre               2991    115 +0.431 +0.637 +0.206  -0.137  +0.343
+  liquidite juste au-dela        1019   2087 +0.520 +0.399 -0.121  -0.068  -0.053
+
+  position dans le mouvement, par quintile (Q1 = le plus en discount)
+    Q1 +0.264  Q2 +0.295  Q3 +0.346  Q4 +0.625  Q5 +0.665
+    ecart Q5-Q1 +0.400   temoin +0.326   net +0.074   rho +0.94
+
+
+CE QUI TIENT SUR LES DEUX MOITIES
+  critere                       net complet    1re      2e     verdict
+  ------------------------------------------------------------------------------
+  imbalance generee            +0.185    +0.041  +0.085   MEME SENS
+  impulsion propre             +0.348    +0.111  +0.343   MEME SENS
+  liquidite juste au-dela      -0.046    +0.101  -0.053   s'inverse
+  position dans le mouvement   +0.018    -0.194  +0.074   s'inverse
+
+  Le signe compte autant que la taille. Pour l'imbalance et
+  l'impulsion propre, un net POSITIF confirme le critere. Pour la
+  liquidite juste au-dela, un net NEGATIF le confirme : c'est bien
+  son absence qu'il faudrait exiger. Pour la position, un net
+  NEGATIF confirme le discount, puisque Q1 est le plus profond.
+
+  (185s)

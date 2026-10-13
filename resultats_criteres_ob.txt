@@ -1,0 +1,24 @@
+588,732 bougies M1 | 100 pips = 10.00 USD l'once
+Criteres appliques A LA DETECTION : refuser une zone libere la
+place pour la suivante, donc le deroulement change reellement.
+'ecart' = R reel moins R des temoins. Lui seul mesure quelque
+chose ; le R reel seul recompense la geometrie du systeme.
+
+ECHANTILLON COMPLET  (436 jours)
+  configuration                   n   freq    WR   stop   TP    R reel   temoin   ecart     t
+  ----------------------------------------------------------------------------------------
+  reference 3 R, confirmation   5847 13.41  38.7%  5.73 3.00R  +0.278  +0.292  -0.015  -0.64
+  contact + TP 100 pips         6262 14.36  50.5%  4.56 2.19R  +0.586  +0.605  -0.019  -0.71
+  + imbalance                    993  2.28  36.4%  3.62 2.76R  +0.197  +0.258  -0.060  -0.95
+  + impulsion propre             725  1.66  33.5%  3.53 2.83R  +0.091  +0.166  -0.075  -1.05
+  + liquidite absente            309  0.71  32.4%  3.83 2.61R  -0.055  +0.087  -0.142  -1.45
+  + discount / premium  = TOUS   271  0.62  31.4%  3.97 2.52R  -0.096  +0.083  -0.179  -1.72
+  TOUS, liquidite EXIGEE         430  0.99  31.9%  3.40 2.94R  +0.099  +0.140  -0.041  -0.42
+  TOUS, TP 50 pips               271  0.62  47.2%  3.97 1.26R  -0.045  +0.063  -0.107  -1.45
+  TOUS, TP 200 pips              271  0.62  24.4%  3.97 5.03R  +0.019  +0.067  -0.049  -0.36
+
+PREMIERE MOITIE  (216 jours)
+  configuration                   n   freq    WR   stop   TP    R reel   temoin   ecart     t
+  ----------------------------------------------------------------------------------------
+  reference 3 R, confirmation   2894 13.40  41.9%  3.99 3.00R  +0.366  +0.334  +0.032  +0.97
+  contact + TP 100 pips         3119 14.44  45.0%  3.20 3.12R  +0.726  +0.693  +0.034  +0.76

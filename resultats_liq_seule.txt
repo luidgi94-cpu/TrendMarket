@@ -1,0 +1,8 @@
+588,732 bougies M1 | entree au contact, cible 100 pips
+Le critere de liquidite est le seul des quatre a produire un t
+exploitable en comparaison interne. Il est ici applique en filtre,
+seul, confronte aux temoins, et dans les deux sens.
+
+ECHANTILLON COMPLET  (436 jours)
+  configuration                     n   freq    WR   stop   R reel   temoin   ecart     t
+  ------------------------------------------------------------------------------------
