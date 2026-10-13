@@ -99,6 +99,54 @@ class MTFConfig:
     poi_valid_bars: int = 48          # duree de vie de l'OB, en bougies M5
     wick_ratio: float = 1.5
 
+    # --- QUALIFICATION DE LA ZONE, telle que demandee ----------------------
+    # Ces cinq criteres sont inactifs par defaut, afin que tous les resultats
+    # publies anterieurement restent reproductibles a l'identique.
+    #
+    # L'imbalance ANCREE sur l'Order Block : la bougie ob+2 ne revient pas
+    # combler l'extremite de l'OB. Deja enregistree sous "ob_plus", ici elle
+    # devient un filtre a la detection.
+    require_imbalance: bool = False
+    # Aucune meche ne revient dans la zone pendant l'impulsion, de ob+2
+    # jusqu'a la bougie de detection. La bougie ob+1 est exclue : elle part
+    # mecaniquement de l'interieur de l'OB.
+    clean_impulse: bool = False
+    # Liquidite juste au-dela de l'extremite de la zone, la ou se trouve le
+    # stop. Niveaux retenus : pivots M5 confirmes et extreme de la veille.
+    #   "ignore"   aucune condition
+    #   "absente"  on refuse la zone si un niveau se trouve dans le tampon
+    #              (lecture de l'utilisateur : le stop serait chasse)
+    #   "presente" on exige au contraire ce niveau (lecture inverse, courante
+    #              dans l'enseignement SMC : la liquidite alimente le mouvement)
+    liq_rule: str = "ignore"
+    liq_buffer_atr: float = 0.5
+    liq_lookback: int = 120
+    # Position de la zone dans le mouvement, mesuree depuis son origine :
+    # 0 = au point de depart du mouvement, 1 = a son extremite. Pour un achat
+    # l'origine est le plus bas, pour une vente le plus haut, ce qui rend la
+    # grandeur comparable dans les deux sens. Le filtre "discount pour un
+    # achat, premium pour une vente" s'ecrit donc a_fib <= 0.5.
+    fib_max: float = 1.0
+    fib_lookback: int = 60
+    # "confirmation" : entree a la cloture de la bougie M1 de confirmation.
+    # "contact"      : ordre limite pose au bord proximal de la zone, rempli
+    #                  au contact. C'est l'entree la plus proche du stop,
+    #                  donc le risque le plus petit a mouvement egal.
+    entry_mode: str = "confirmation"
+    # BIAIS PROPRE A L'ORDRE LIMITE. Un graphique XAUUSD affiche le BID. Un
+    # ordre d'achat est rempli sur l'ASK, donc le bid doit descendre un
+    # spread PLUS BAS que le prix limite pour que l'ordre passe. Un backtest
+    # qui remplit des que la bougie effleure la zone compte donc des entrees
+    # qui n'auraient pas eu lieu, et ce sont justement les meilleures : les
+    # touches a la limite exacte, suivies d'un rebond. Le biais va donc dans
+    # le sens favorable et doit etre mesure. A 0.15, on exige que le prix
+    # penetre la zone d'un spread avant de compter l'ordre rempli.
+    fill_margin_usd: float = 0.0
+    # Cible FIXE, en dollars l'once. 100 pips XAUUSD = 10.00 USD l'once dans
+    # la convention du courtier (1 pip = 0.10, 1 point = 0.01). A 0, la cible
+    # reste proportionnelle au risque via tp_r.
+    tp_usd: float = 0.0
+
     stop_buffer_atr: float = 0.15
     tp_r: float = 3.0
     partial_r: float = 1.0
@@ -145,6 +193,15 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
     kz = np.zeros(len(i5), bool)
     for a, b in cfg.killzones:
         kz |= (hours5 >= a) & (hours5 < b)
+
+    # Extremes de la VEILLE, niveaux de liquidite les plus evidents. Lus avec
+    # un jour de retard : la valeur portee par chaque bougie est celle du jour
+    # precedent, cloture, jamais celle du jour en cours.
+    jours5 = i5.normalize()
+    _dh = pd.Series(h5, index=i5).groupby(jours5).max()
+    _dl = pd.Series(l5, index=i5).groupby(jours5).min()
+    pdh = _dh.shift(1).reindex(jours5).to_numpy()
+    pdl = _dl.shift(1).reindex(jours5).to_numpy()
 
     # --- unite de confirmation --------------------------------------------
     o1 = m1.open.to_numpy(); hh = m1.high.to_numpy()
@@ -274,6 +331,83 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         if ob + 2 < n5:
             ob_plus = bool((l5[ob + 2] > h5[ob]) if d > 0
                            else (h5[ob + 2] < l5[ob]))
+        if cfg.require_imbalance and not ob_plus:
+            rej["sans_imbalance"] = rej.get("sans_imbalance", 0) + 1
+            i += 1
+            continue
+
+        # --- aucune meche ne revient dans la zone pendant l'impulsion ------
+        # La bougie ob+1 est exclue : elle part de l'interieur de l'OB par
+        # construction. On exige donc, de ob+2 a la bougie de detection, que
+        # le prix soit reste entierement au-dela du bord proximal.
+        a_propre = 1
+        for k in range(ob + 2, i + 1):
+            if (l5[k] <= ob_hi) if d > 0 else (h5[k] >= ob_lo):
+                a_propre = 0
+                break
+        if cfg.clean_impulse and not a_propre:
+            rej["meche_dans_lOB"] = rej.get("meche_dans_lOB", 0) + 1
+            i += 1
+            continue
+
+        # --- liquidite juste au-dela de l'extremite, la ou ira le stop -----
+        # Pour un achat, on regarde SOUS le bas de la zone ; pour une vente,
+        # AU-DESSUS du haut. Les pivots sont lus avec leur retard de
+        # confirmation, l'extreme de la veille avec un jour de retard.
+        bord = ob_lo if d > 0 else ob_hi
+        tampon = cfg.liq_buffer_atr * atr5[i]
+        a_liq = 0
+        niveaux = []
+        for k in range(max(i - cfg.liq_lookback, 1), i - cfg.fractal_k + 1):
+            if d > 0 and sl5[k]:
+                niveaux.append(l5[k])
+            elif d < 0 and sh5[k]:
+                niveaux.append(h5[k])
+        bord_jour = pdl[i] if d > 0 else pdh[i]
+        if not np.isnan(bord_jour):
+            niveaux.append(bord_jour)
+        for niv in niveaux:
+            dans = (bord - tampon <= niv < bord) if d > 0 \
+                else (bord < niv <= bord + tampon)
+            if dans:
+                a_liq = 1
+                break
+        if cfg.liq_rule == "absente" and a_liq:
+            rej["liquidite_sous_la_zone"] = rej.get("liquidite_sous_la_zone", 0) + 1
+            i += 1
+            continue
+        if cfg.liq_rule == "presente" and not a_liq:
+            rej["pas_de_liquidite"] = rej.get("pas_de_liquidite", 0) + 1
+            i += 1
+            continue
+
+        # --- premium / discount, fibonacci trace sur le mouvement ----------
+        # Origine du mouvement : dernier pivot confirme de meme nature que
+        # l'origine attendue (un creux pour un achat, un sommet pour une
+        # vente), cherche en arriere depuis la bougie d'Order Block. A defaut,
+        # le bord de la fenetre. Le trace va ensuite du plus bas au plus haut
+        # de tout ce segment, bougie de detection comprise.
+        k0 = -1
+        for k in range(ob, max(ob - cfg.fib_lookback, 1), -1):
+            if k + cfg.fractal_k > i:
+                continue
+            if (sl5[k] if d > 0 else sh5[k]):
+                k0 = k
+                break
+        if k0 < 0:
+            k0 = max(ob - cfg.fib_lookback, 1)
+        lo_leg = float(np.min(l5[k0:i + 1]))
+        hi_leg = float(np.max(h5[k0:i + 1]))
+        ob_mid = 0.5 * (ob_lo + ob_hi)
+        if hi_leg > lo_leg:
+            a_fib = ((ob_mid - lo_leg) if d > 0 else (hi_leg - ob_mid)) \
+                / (hi_leg - lo_leg)
+        else:
+            a_fib = 0.5
+        if cfg.fib_max < 1.0 and a_fib > cfg.fib_max:
+            rej["hors_zone_fib"] = rej.get("hors_zone_fib", 0) + 1
+            i += 1
+            continue
 
         # --- ATTRIBUTS MESURABLES DE LA ZONE -------------------------------
         # Chacun est enregistre, aucun ne filtre. Le but est de savoir si
@@ -316,31 +450,48 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
         start = np.searchsorted(pos1, i5[i].to_datetime64(), side="right")
         end = min(start + cfg.poi_valid_bars * 5, n1)
         touch = -1
+        marge = cfg.fill_margin_usd if cfg.entry_mode == "contact" else 0.0
+        seuil_hi = ob_hi - marge
+        seuil_lo = ob_lo + marge
         for j in range(start, end):
             if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
-            if ll[j] <= ob_hi and hh[j] >= ob_lo: touch = j; break
+            if (ll[j] <= seuil_hi) if d > 0 else (hh[j] >= seuil_lo):
+                touch = j; break
         if touch < 0: rej["zone_non_touchee"] += 1; i += 1; continue
         # Delai entre la creation de la zone et son premier contact
         a_delai = (i1[touch] - i5[i]).total_seconds() / 60.0
 
-        # --- confirmation en M1 -------------------------------------------
+        # --- entree --------------------------------------------------------
         entry_at, kind = -1, None
-        if not cfg.require_confirm:
+        if cfg.entry_mode == "contact":
+            # Ordre limite pose au bord proximal de la zone. Il est rempli
+            # au contact, ou mieux si la bougie ouvre deja au-dela : on
+            # retient donc le prix le plus favorable des deux, ce qui est la
+            # mecanique reelle d'un ordre limite, sans rien supposer de plus.
+            entry_at, kind = touch, "contact"
+        elif not cfg.require_confirm:
             entry_at, kind = touch, "aucune"
         for j in range(touch, min(touch + cfg.confirm_bars, n1)) \
-                if cfg.require_confirm else []:
+                if (cfg.require_confirm and cfg.entry_mode != "contact") else []:
             k = confirmed(j, int(d))
             if k: entry_at, kind = j, k; break
             if (ll[j] < ob_lo) if d > 0 else (hh[j] > ob_hi): break
         if entry_at < 0:
             rej["pas_de_confirmation"] += 1; i += 1; continue
 
-        entry_px = cc[entry_at]
+        if cfg.entry_mode == "contact":
+            entry_px = min(ob_hi, o1[touch]) if d > 0 else max(ob_lo, o1[touch])
+        else:
+            entry_px = cc[entry_at]
         base = ob_lo if d > 0 else ob_hi
         stop_px = base - d * cfg.stop_buffer_atr * atr5[i]
         risk = abs(entry_px - stop_px)
         if risk <= 0: i += 1; continue
-        target_px = entry_px + d * cfg.tp_r * risk
+        if cfg.tp_usd > 0:
+            target_px = entry_px + d * cfg.tp_usd
+        else:
+            target_px = entry_px + d * cfg.tp_r * risk
+        tp_en_r = (target_px - entry_px) * d / risk
         partial_px = entry_px + d * cfg.partial_r * risk
         be_px = entry_px + d * (cfg.spread_usd + cfg.slippage_usd)
 
@@ -361,7 +512,7 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
                         partial_done = True
                         stop_px = be_px
                 if (hh[j] >= target_px) if d > 0 else (ll[j] <= target_px):
-                    realised += remaining * cfg.tp_r
+                    realised += remaining * tp_en_r
                     r_mult, why, hit = realised, "cible", True; break
             if not hit:
                 j = min(entry_at + cfg.max_hold_min - 1, n1 - 1)
@@ -378,7 +529,8 @@ def backtest_mtf(m5: pd.DataFrame, m1: pd.DataFrame,
                        "a_imp": a_imp, "a_zone": a_zone, "a_corps": a_corps,
                        "a_jambe": a_jambe, "a_age5": a_age5, "a_bos": a_bos,
                        "a_vol": a_vol, "a_pos": a_pos, "a_force": a_force,
-                       "a_delai": a_delai,
+                       "a_delai": a_delai, "a_fib": a_fib, "a_liq": a_liq,
+                       "a_propre": a_propre, "tp_en_r": tp_en_r,
                        "R": pnl / (risk * cfg.units), "pnl": pnl,
                        "exit": why, "equity": equity})
         if equity < 50: break
