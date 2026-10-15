@@ -73,8 +73,9 @@ if inAsia and not inAsia[1]
 else if inAsia
     aH := math.max(aH, high)
     aL := math.min(aL, low)
-plot(aH, "Asia High", color=color.new(color.orange, 30), style=plot.style_linebr)
-plot(aL, "Asia Low", color=color.new(color.orange, 30), style=plot.style_linebr)
+bool newAsia = inAsia and not inAsia[1]
+plot(newAsia ? na : aH, "Asia High", color=color.new(color.orange, 30), style=plot.style_linebr)
+plot(newAsia ? na : aL, "Asia Low", color=color.new(color.orange, 30), style=plot.style_linebr)
 
 // ───────────── État des OB ─────────────
 var bxs   = array.new<box>()
@@ -201,7 +202,12 @@ if d != 0
     bool htf = htfA == d and htfB == d
     int stars = 1 + (fvg ? 1 : 0) + (bos ? 1 : 0) + (sweep ? 1 : 0) + (htf ? 1 : 0)
     bool fresh = d == 1 ? low > zTop : high < zBot
-    if fresh and obBar != lastOb and zTop > zBot and (zTop - zBot) <= maxZoneATR * atr
+    bool dup = false
+    if array.size(tops) > 0
+        for j = 0 to array.size(tops) - 1
+            if array.get(dirs, j) == d and array.get(tops, j) >= zBot and array.get(bots, j) <= zTop
+                dup := true
+    if fresh and not dup and obBar != lastOb and zTop > zBot and (zTop - zBot) <= maxZoneATR * atr
         lastOb := obBar
         box b = na
         if stars >= minStars
