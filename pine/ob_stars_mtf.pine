@@ -19,6 +19,7 @@ showMtf    = input.bool(true, "Tableau MTF", group="Affichage")
 showStats  = input.bool(true, "Tableau de stats par étoiles", group="Affichage")
 
 rr         = input.float(2.0, "Stats : cible en R", minval=0.5, step=0.5, group="Stats")
+entryFrac  = input.float(0.705, "Entrée dans la zone (0 = bord, 0.705 = OTE)", minval=0.0, maxval=0.9, step=0.05, group="Stats")
 pivLen     = input.int(5, "Structure : longueur des pivots", minval=2, group="MTF")
 asiaSess   = input.session("0000-0800", "Session asiatique (UTC)", group="Asia")
 
@@ -89,6 +90,24 @@ var int lastOb = -1
 
 float atr = ta.atr(atrLen)
 
+// Alignement HTF relatif au timeframe du graphique : les 2 TF juste au-dessus (marche sur tout timeframe)
+var secsArr = array.from(300, 900, 1800, 3600, 14400, 86400)
+int ia = 5
+for q = 0 to 5
+    if array.get(secsArr, q) > timeframe.in_seconds()
+        ia := q
+        break
+int ib = math.min(ia + 1, 5)
+var int[] trA = array.new_int(6, 0)
+array.set(trA, 0, t5)
+array.set(trA, 1, t15)
+array.set(trA, 2, t30)
+array.set(trA, 3, t60)
+array.set(trA, 4, t240)
+array.set(trA, 5, tD)
+int htfA = array.get(trA, ia)
+int htfB = array.get(trA, ib)
+
 // 1) Mise à jour des OB existants (avant création pour ne pas traiter l'OB né sur cette barre)
 if array.size(tops) > 0
     for i = array.size(tops) - 1 to 0
@@ -99,12 +118,13 @@ if array.size(tops) > 0
         int oStars = array.get(strs, i)
         int oBorn = array.get(borns, i)
         box oBox = array.get(bxs, i)
+        float oEntry = oDir == 1 ? oTop - entryFrac * (oTop - oBot) : oBot + entryFrac * (oTop - oBot)
         bool wasTouched = oSt == 1
         bool resolved = false
         bool isWin = false
         bool expired = false
         if oSt == 0
-            if (oDir == 1 and low <= oTop) or (oDir == -1 and high >= oBot)
+            if (oDir == 1 and low <= oEntry) or (oDir == -1 and high >= oEntry)
                 oSt := 1
                 array.set(sts, i, 1)
                 if not na(oBox)
@@ -112,17 +132,17 @@ if array.size(tops) > 0
             else if bar_index - oBorn > maxAge
                 expired := true
         if oSt == 1
-            float risk = oTop - oBot
+            float risk = oDir == 1 ? oEntry - oBot : oTop - oEntry
             if oDir == 1
                 if low < oBot
                     resolved := true
-                else if wasTouched and high >= oTop + rr * risk
+                else if wasTouched and high >= oEntry + rr * risk
                     resolved := true
                     isWin := true
             else
                 if high > oTop
                     resolved := true
-                else if wasTouched and low <= oBot - rr * risk
+                else if wasTouched and low <= oEntry - rr * risk
                     resolved := true
                     isWin := true
         if resolved
@@ -178,7 +198,7 @@ if d != 0
     bool fvg = d == 1 ? bullFvg : bearFvg
     bool bos = d == 1 ? bullBos : bearBos
     bool sweep = d == 1 ? low[obK] < swLo[obK + 1] : high[obK] > swHi[obK + 1]
-    bool htf = t240 == d and tD == d
+    bool htf = htfA == d and htfB == d
     int stars = 1 + (fvg ? 1 : 0) + (bos ? 1 : 0) + (sweep ? 1 : 0) + (htf ? 1 : 0)
     bool fresh = d == 1 ? low > zTop : high < zBot
     if fresh and obBar != lastOb and zTop > zBot and (zTop - zBot) <= maxZoneATR * atr
