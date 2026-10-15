@@ -1,0 +1,274 @@
+//@version=5
+indicator("OB Stars + MTF Bias", shorttitle="OB★ MTF", overlay=true, max_boxes_count=300)
+
+// Reconstruction personnelle inspirée des captures (OB 5 étoiles / KTA MTF / AsianSession).
+// Les critères d'étoiles sont des HYPOTHÈSES, validées par le tableau de stats en bas à droite.
+
+// ───────────── Inputs ─────────────
+atrLen     = input.int(14, "ATR length", minval=1, group="Order Block")
+impMult    = input.float(1.5, "Impulsion : corps ≥ ATR ×", minval=0.5, step=0.1, group="Order Block")
+lookback   = input.int(6, "Recherche de la bougie OB (barres)", minval=1, group="Order Block")
+structLen  = input.int(20, "BOS : extrême sur N barres", minval=2, group="Order Block")
+sweepLen   = input.int(10, "Sweep : liquidité sur N barres", minval=2, group="Order Block")
+maxZoneATR = input.float(3.0, "Taille max de zone (ATR ×)", minval=0.5, step=0.5, group="Order Block")
+useBody    = input.bool(false, "Zone = corps seul (sinon mèches incluses)", group="Order Block")
+
+minStars   = input.int(3, "Afficher OB ≥ étoiles", minval=1, maxval=5, group="Affichage")
+maxAge     = input.int(400, "Expiration d'une zone non touchée (barres)", minval=10, group="Affichage")
+showMtf    = input.bool(true, "Tableau MTF", group="Affichage")
+showStats  = input.bool(true, "Tableau de stats par étoiles", group="Affichage")
+
+rr         = input.float(2.0, "Stats : cible en R", minval=0.5, step=0.5, group="Stats")
+entryFrac  = input.float(0.705, "Entrée dans la zone (0 = bord, 0.705 = OTE)", minval=0.0, maxval=0.9, step=0.05, group="Stats")
+pivLen     = input.int(5, "Structure : longueur des pivots", minval=2, group="MTF")
+asiaSess   = input.session("0000-0800", "Session asiatique (UTC)", group="Asia")
+
+// ───────────── Structure : pivots → BOS / CHoCH ─────────────
+f_struct(int len) =>
+    var float swH = na
+    var float swL = na
+    var float ubH = na
+    var float ubL = na
+    var int trend = 0
+    var int evt = 0
+    var int evtT = na
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    if not na(ph)
+        swH := ph
+        ubH := ph
+    if not na(pl)
+        swL := pl
+        ubL := pl
+    if not na(ubH) and close > ubH
+        evt := trend == 1 ? 1 : 2
+        trend := 1
+        evtT := time
+        ubH := na
+    if not na(ubL) and close < ubL
+        evt := trend == -1 ? 1 : 2
+        trend := -1
+        evtT := time
+        ubL := na
+    float inv = trend == 1 ? swL : trend == -1 ? swH : na
+    [trend, evt, evtT, inv]
+
+[t5, e5, ts5, i5]       = request.security(syminfo.tickerid, "5",   f_struct(pivLen))
+[t15, e15, ts15, i15]   = request.security(syminfo.tickerid, "15",  f_struct(pivLen))
+[t30, e30, ts30, i30]   = request.security(syminfo.tickerid, "30",  f_struct(pivLen))
+[t60, e60, ts60, i60]   = request.security(syminfo.tickerid, "60",  f_struct(pivLen))
+[t240, e240, ts240, i240] = request.security(syminfo.tickerid, "240", f_struct(pivLen))
+[tD, eD, tsD, iD]       = request.security(syminfo.tickerid, "D",   f_struct(pivLen))
+
+// Biais pondéré -10..+10 (poids plus forts sur les HTF)
+float bias = 0.5 * t5 + 1.0 * t15 + 1.5 * t30 + 2.0 * t60 + 2.5 * t240 + 2.5 * tD
+
+// ───────────── Session asiatique ─────────────
+bool inAsia = not na(time(timeframe.period, asiaSess, "UTC"))
+var float aH = na
+var float aL = na
+if inAsia and not inAsia[1]
+    aH := high
+    aL := low
+else if inAsia
+    aH := math.max(aH, high)
+    aL := math.min(aL, low)
+plot(aH, "Asia High", color=color.new(color.orange, 30), style=plot.style_linebr)
+plot(aL, "Asia Low", color=color.new(color.orange, 30), style=plot.style_linebr)
+
+// ───────────── État des OB ─────────────
+var bxs   = array.new<box>()
+var tops  = array.new_float()
+var bots  = array.new_float()
+var dirs  = array.new_int()
+var strs  = array.new_int()
+var sts   = array.new_int()   // 0 = fraîche, 1 = touchée (trade simulé en cours)
+var borns = array.new_int()
+var wins   = array.new_int(6, 0)
+var losses = array.new_int(6, 0)
+var int lastOb = -1
+
+float atr = ta.atr(atrLen)
+
+// Alignement HTF relatif au timeframe du graphique : les 2 TF juste au-dessus (marche sur tout timeframe)
+var secsArr = array.from(300, 900, 1800, 3600, 14400, 86400)
+int ia = 5
+for q = 0 to 5
+    if array.get(secsArr, q) > timeframe.in_seconds()
+        ia := q
+        break
+int ib = math.min(ia + 1, 5)
+var int[] trA = array.new_int(6, 0)
+array.set(trA, 0, t5)
+array.set(trA, 1, t15)
+array.set(trA, 2, t30)
+array.set(trA, 3, t60)
+array.set(trA, 4, t240)
+array.set(trA, 5, tD)
+int htfA = array.get(trA, ia)
+int htfB = array.get(trA, ib)
+
+// 1) Mise à jour des OB existants (avant création pour ne pas traiter l'OB né sur cette barre)
+if array.size(tops) > 0
+    for i = array.size(tops) - 1 to 0
+        float oTop = array.get(tops, i)
+        float oBot = array.get(bots, i)
+        int oDir = array.get(dirs, i)
+        int oSt = array.get(sts, i)
+        int oStars = array.get(strs, i)
+        int oBorn = array.get(borns, i)
+        box oBox = array.get(bxs, i)
+        float oEntry = oDir == 1 ? oTop - entryFrac * (oTop - oBot) : oBot + entryFrac * (oTop - oBot)
+        bool wasTouched = oSt == 1
+        bool resolved = false
+        bool isWin = false
+        bool expired = false
+        if oSt == 0
+            if (oDir == 1 and low <= oEntry) or (oDir == -1 and high >= oEntry)
+                oSt := 1
+                array.set(sts, i, 1)
+                if not na(oBox)
+                    box.set_bgcolor(oBox, color.new(color.gray, 90))
+            else if bar_index - oBorn > maxAge
+                expired := true
+        if oSt == 1
+            float risk = oDir == 1 ? oEntry - oBot : oTop - oEntry
+            if oDir == 1
+                if low < oBot
+                    resolved := true
+                else if wasTouched and high >= oEntry + rr * risk
+                    resolved := true
+                    isWin := true
+            else
+                if high > oTop
+                    resolved := true
+                else if wasTouched and low <= oEntry - rr * risk
+                    resolved := true
+                    isWin := true
+        if resolved
+            if isWin
+                array.set(wins, oStars, array.get(wins, oStars) + 1)
+            else
+                array.set(losses, oStars, array.get(losses, oStars) + 1)
+        if resolved or expired
+            if not na(oBox)
+                box.set_extend(oBox, extend.none)
+                box.set_right(oBox, bar_index)
+            array.remove(bxs, i)
+            array.remove(tops, i)
+            array.remove(bots, i)
+            array.remove(dirs, i)
+            array.remove(strs, i)
+            array.remove(sts, i)
+            array.remove(borns, i)
+
+// 2) Détection : impulsion sur la barre [1], FVG confirmé par la barre [0]
+float hh = ta.highest(high, structLen)
+float ll = ta.lowest(low, structLen)
+float swHi = ta.highest(high, sweepLen)
+float swLo = ta.lowest(low, sweepLen)
+
+bool strong = math.abs(close[1] - open[1]) >= impMult * atr[1]
+bool bullImp = strong and close[1] > open[1]
+bool bearImp = strong and close[1] < open[1]
+bool bullFvg = low > high[2]
+bool bearFvg = high < low[2]
+bool bullBos = close[1] > hh[2]
+bool bearBos = close[1] < ll[2]
+
+int d = 0
+int obK = na
+if bullImp
+    for k = 2 to lookback + 1
+        if close[k] < open[k]
+            d := 1
+            obK := k
+            break
+if d == 0 and bearImp
+    for k = 2 to lookback + 1
+        if close[k] > open[k]
+            d := -1
+            obK := k
+            break
+
+if d != 0
+    float zTop = useBody ? math.max(open[obK], close[obK]) : high[obK]
+    float zBot = useBody ? math.min(open[obK], close[obK]) : low[obK]
+    int obBar = bar_index - obK
+    bool fvg = d == 1 ? bullFvg : bearFvg
+    bool bos = d == 1 ? bullBos : bearBos
+    bool sweep = d == 1 ? low[obK] < swLo[obK + 1] : high[obK] > swHi[obK + 1]
+    bool htf = htfA == d and htfB == d
+    int stars = 1 + (fvg ? 1 : 0) + (bos ? 1 : 0) + (sweep ? 1 : 0) + (htf ? 1 : 0)
+    bool fresh = d == 1 ? low > zTop : high < zBot
+    if fresh and obBar != lastOb and zTop > zBot and (zTop - zBot) <= maxZoneATR * atr
+        lastOb := obBar
+        box b = na
+        if stars >= minStars
+            color cFill = stars == 5 ? color.new(#FFC800, 70) : color.new(color.gray, 82)
+            color cBord = stars == 5 ? #FFC800 : color.gray
+            string lbl = (d == 1 ? "ZONE ACHAT " : "ZONE VENTE ") + str.tostring(stars) + "★"
+            color cTxt = d == 1 ? color.green : color.red
+            b := box.new(obBar, zTop, bar_index, zBot, border_color=cBord, bgcolor=cFill, extend=extend.right, text=lbl, text_color=cTxt, text_size=size.small, text_halign=text.align_right)
+        array.push(bxs, b)
+        array.push(tops, zTop)
+        array.push(bots, zBot)
+        array.push(dirs, d)
+        array.push(strs, stars)
+        array.push(sts, 0)
+        array.push(borns, bar_index)
+        if stars == 5
+            alert("OB 5★ " + (d == 1 ? "ACHAT " : "VENTE ") + syminfo.ticker + " " + str.tostring(zBot) + " - " + str.tostring(zTop), alert.freq_once_per_bar_close)
+
+// ───────────── Tableau MTF ─────────────
+f_age(int t) =>
+    float mins = na(t) ? na : (timenow - t) / 60000.0
+    na(mins) ? "-" : mins < 60 ? str.tostring(math.round(mins)) + "m" : mins < 1440 ? str.tostring(math.round(mins / 60)) + "h" : str.tostring(math.round(mins / 1440)) + "j"
+
+f_row(table tb, int r, string name, int t, int e, int ts, float iv) =>
+    color bg = t == 1 ? color.new(color.green, 30) : t == -1 ? color.new(color.red, 30) : color.new(color.gray, 60)
+    string sTxt = t == 1 ? "▲ Haussier" : t == -1 ? "▼ Baissier" : "-"
+    string eTxt = e == 0 ? "-" : (e == 1 ? "BOS " : "CHoCH ") + (t == 1 ? "▲" : "▼")
+    float dist = na(iv) ? na : (close - iv) / close * 100
+    table.cell(tb, 0, r, name, text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+    table.cell(tb, 1, r, sTxt, text_color=color.white, bgcolor=bg, text_size=size.small)
+    table.cell(tb, 2, r, eTxt, text_color=color.white, bgcolor=bg, text_size=size.small)
+    table.cell(tb, 3, r, f_age(ts), text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+    table.cell(tb, 4, r, na(iv) ? "-" : str.tostring(iv, format.mintick), text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+    table.cell(tb, 5, r, na(dist) ? "-" : str.tostring(dist, "#.##") + "%", text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+
+var table mt = table.new(position.top_right, 6, 9, border_width=1)
+if barstate.islast and showMtf
+    string[] hd = array.from("TF", "Structure", "Event", "Âge", "Invalidation", "Dist.")
+    for c = 0 to 5
+        table.cell(mt, c, 0, array.get(hd, c), text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    f_row(mt, 1, "5m", t5, e5, ts5, i5)
+    f_row(mt, 2, "15m", t15, e15, ts15, i15)
+    f_row(mt, 3, "30m", t30, e30, ts30, i30)
+    f_row(mt, 4, "1H", t60, e60, ts60, i60)
+    f_row(mt, 5, "4H", t240, e240, ts240, i240)
+    f_row(mt, 6, "D", tD, eD, tsD, iD)
+    table.merge_cells(mt, 0, 7, 5, 7)
+    table.cell(mt, 0, 7, "Biais pondéré : " + str.tostring(bias, "#.#") + " / 10", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    string msg = t240 == tD and t240 != 0 ? "HTF (4H+D) alignés " + (t240 == 1 ? "▲" : "▼") : "HTF divergents → prudence"
+    table.merge_cells(mt, 0, 8, 5, 8)
+    table.cell(mt, 0, 8, msg, text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+
+// ───────────── Stats par étoiles ─────────────
+var table sb = table.new(position.bottom_right, 4, 7, border_width=1)
+if barstate.islast and showStats
+    table.cell(sb, 0, 0, "★", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    table.cell(sb, 1, 0, "N", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    table.cell(sb, 2, 0, "Win%", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    table.cell(sb, 3, 0, "E(R)", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+    for s = 5 to 1
+        int w = array.get(wins, s)
+        int l = array.get(losses, s)
+        int n = w + l
+        float wr = n > 0 ? w / n : na
+        float ex = n > 0 ? wr * rr - (1 - wr) : na
+        int r = 6 - s
+        table.cell(sb, 0, r, str.tostring(s), text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+        table.cell(sb, 1, r, str.tostring(n), text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+        table.cell(sb, 2, r, n > 0 ? str.tostring(wr * 100, "#.#") + "%" : "-", text_color=color.white, bgcolor=color.new(color.gray, 30), text_size=size.small)
+        table.cell(sb, 3, r, n > 0 ? str.tostring(ex, "#.##") : "-", text_color=color.white, bgcolor=n > 0 ? (ex > 0 ? color.new(color.green, 30) : color.new(color.red, 30)) : color.new(color.gray, 30), text_size=size.small)
