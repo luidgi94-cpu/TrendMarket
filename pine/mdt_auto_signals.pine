@@ -1,0 +1,222 @@
+//@version=6
+// MDT-like Auto Signals : UT Bot + scanner MTF + trade en cours + stats globales + stats sessions
+// Version INDICATEUR (comme sur ta capture) : signaux ACHAT/VENTE avec SL / TP1 / TP2,
+// panneau a droite, et statistiques simulees SUR L'HISTORIQUE CHARGE, nettes de frais.
+// Non-repainting : decisions sur bougie cloturee, TF superieurs lus en [1] + lookahead_on.
+indicator("MDT-like Auto Signals", shorttitle = "MDT Auto", overlay = true, max_labels_count = 500)
+
+// ---------- Inputs ----------
+g1 = "UT Bot"
+sens    = input.float(2.0, "Sensibilite (Key Value)", minval = 0.5, step = 0.1, group = g1)
+atrLen  = input.int(10, "ATR periode", minval = 1, group = g1)
+g2 = "Scanner MTF"
+tf1     = input.timeframe("5",   "UT 1", group = g2)
+tf2     = input.timeframe("15",  "UT 2", group = g2)
+tf3     = input.timeframe("60",  "UT 3", group = g2)
+tf4     = input.timeframe("240", "UT 4", group = g2)
+minVote = input.int(0, "Votes minimum pour signaler (0 = aucun filtre)", minval = 0, maxval = 4, group = g2)
+g3 = "Filtres (optionnels)"
+useEma  = input.bool(false, "Filtre EMA", group = g3)
+emaLen  = input.int(200, "EMA", group = g3)
+useAdx  = input.bool(false, "Filtre ADX", group = g3)
+adxMin  = input.float(20.0, "ADX min", group = g3)
+g4 = "Trade"
+slMult  = input.float(2.0, "SL = x ATR", step = 0.1, group = g4)
+tp1R    = input.float(0.5, "TP1 (R)", step = 0.1, group = g4)
+tp1Pct  = input.float(50.0, "% ferme au TP1 (le reste passe a BE)", minval = 0, maxval = 100, group = g4)
+tp2R    = input.float(3.0, "TP2 (R)", step = 0.1, group = g4)
+costPct = input.float(0.05, "Frais par cote (%)", step = 0.01, group = g4)
+showPanel = input.bool(true, "Afficher le panneau", group = g4)
+
+// ---------- UT Bot ----------
+f_ut(float a, int len) =>
+    float src   = close
+    float nLoss = a * ta.atr(len)
+    var float ts = 0.0
+    float p = nz(ts[1], src)
+    if src > p and src[1] > p
+        ts := math.max(p, src - nLoss)
+    else if src < p and src[1] < p
+        ts := math.min(p, src + nLoss)
+    else
+        ts := src > p ? src - nLoss : src + nLoss
+    int dir = src > ts ? 1 : -1
+    [ts, dir]
+
+f_utDir() =>
+    [t, d] = f_ut(sens, atrLen)
+    d
+
+f_mtf(simple string tf) =>
+    request.security(syminfo.tickerid, tf, f_utDir()[1], lookahead = barmerge.lookahead_on)
+
+[ts, dir] = f_ut(sens, atrLen)
+d1 = f_mtf(tf1)
+d2 = f_mtf(tf2)
+d3 = f_mtf(tf3)
+d4 = f_mtf(tf4)
+votesL = (d1 == 1 ? 1 : 0) + (d2 == 1 ? 1 : 0) + (d3 == 1 ? 1 : 0) + (d4 == 1 ? 1 : 0)
+votesS = (d1 == -1 ? 1 : 0) + (d2 == -1 ? 1 : 0) + (d3 == -1 ? 1 : 0) + (d4 == -1 ? 1 : 0)
+
+atr    = ta.atr(atrLen)
+ema    = ta.ema(close, emaLen)
+[_p, _m, adx] = ta.dmi(14, 14)
+okF    = (not useAdx or adx > adxMin)
+
+buyRaw  = dir == 1  and dir[1] == -1
+sellRaw = dir == -1 and dir[1] == 1
+longSig  = buyRaw  and votesL >= minVote and okF and (not useEma or close > ema)
+shortSig = sellRaw and votesS >= minVote and okF and (not useEma or close < ema)
+
+f_sess() =>
+    int h = hour(time, "UTC")
+    h < 7 ? 2 : h < 13 ? 0 : h < 21 ? 1 : 3   // 0 LON, 1 NY, 2 ASIE, 3 HORS
+
+// ---------- Simulation du trade (un seul a la fois) ----------
+var int   pos = 0
+var int   entBar = 0
+var float ent = na
+var float riskD = na
+var float slCur = na
+var float tp1 = na
+var float tp2 = na
+var bool  tp1Hit = false
+var float banked = 0.0
+var float maxFav = 0.0
+var int   sess = 0
+var label lbl = na
+var int   nTot = 0
+var int   nWin = 0
+var int   nTp1 = 0
+var int   nTp2 = 0
+var float sumR = 0.0
+var array<int> sessN = array.from(0, 0, 0, 0)
+var array<int> sessW = array.from(0, 0, 0, 0)
+
+bool conf = barstate.isconfirmed
+bool closedNow = false
+bool hitTp2 = false
+float resR = na
+float rest = 1.0 - tp1Pct / 100.0
+
+if conf and pos != 0 and bar_index > entBar
+    bool slHit = pos == 1 ? low <= slCur : high >= slCur
+    if slHit
+        closedNow := true
+        resR := tp1Hit ? banked : -1.0
+    else
+        if not tp1Hit and (pos == 1 ? high >= tp1 : low <= tp1)
+            tp1Hit := true
+            banked := tp1Pct / 100.0 * tp1R
+            slCur := ent
+        if pos == 1 ? high >= tp2 : low <= tp2
+            closedNow := true
+            hitTp2 := true
+            resR := (tp1Hit ? banked : 0.0) + rest * tp2R
+    maxFav := math.max(maxFav, (pos == 1 ? high - ent : ent - low) / riskD)
+
+if conf and pos != 0 and not closedNow and ((pos == 1 and sellRaw) or (pos == -1 and buyRaw))
+    float rr = (close - ent) * pos / riskD
+    resR := tp1Hit ? banked + rest * rr : rr
+    closedNow := true
+
+if closedNow
+    float net = resR - 2.0 * costPct / 100.0 * ent / riskD
+    nTot += 1
+    sumR += net
+    if net > 0
+        nWin += 1
+    if tp1Hit
+        nTp1 += 1
+    if hitTp2
+        nTp2 += 1
+    array.set(sessN, sess, array.get(sessN, sess) + 1)
+    if net > 0
+        array.set(sessW, sess, array.get(sessW, sess) + 1)
+    label.set_text(lbl, (pos == 1 ? "ACHAT " : "VENTE ") + str.tostring(ent, format.mintick) + " | "
+         + (net >= 0 ? "+" : "") + str.tostring(net, "#.00") + "R " + (net > 0 ? "✓" : "✗"))
+    pos := 0
+
+if conf and pos == 0 and (longSig or shortSig)
+    pos := longSig ? 1 : -1
+    ent := close
+    riskD := atr * slMult
+    slCur := ent - pos * riskD
+    tp1 := ent + pos * riskD * tp1R
+    tp2 := ent + pos * riskD * tp2R
+    tp1Hit := false
+    banked := 0.0
+    maxFav := 0.0
+    entBar := bar_index
+    sess := f_sess()
+    lbl := label.new(bar_index, pos == 1 ? low : high,
+         (pos == 1 ? "ACHAT " : "VENTE ") + str.tostring(ent, format.mintick),
+         style = pos == 1 ? label.style_label_up : label.style_label_down,
+         color = pos == 1 ? color.new(color.green, 0) : color.new(color.red, 0),
+         textcolor = color.white, size = size.small)
+
+// ---------- Plots ----------
+plot(ts, "UT trailing stop", color = dir == 1 ? color.teal : color.red, linewidth = 2)
+plot(pos != 0 ? slCur : na, "SL / BE", color.new(color.orange, 10), style = plot.style_linebr)
+plot(pos != 0 ? tp1 : na, "TP1", color.new(color.lime, 30), style = plot.style_linebr)
+plot(pos != 0 ? tp2 : na, "TP2", color.new(color.green, 30), style = plot.style_linebr)
+bgcolor(pos == 1 ? color.new(color.green, 94) : pos == -1 ? color.new(color.red, 94) : na)
+
+alertcondition(longSig,  "MDT ACHAT", "Signal ACHAT {{ticker}} {{interval}}")
+alertcondition(shortSig, "MDT VENTE", "Signal VENTE {{ticker}} {{interval}}")
+
+// ---------- Panneau ----------
+var table t = table.new(position.top_right, 2, 25, bgcolor = color.new(color.black, 15), border_width = 1,
+     border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 40))
+
+f_row(int r, string a, string b, color c = color.white) =>
+    table.cell(t, 0, r, a, text_color = color.new(color.white, 25), text_halign = text.align_left, text_size = size.small)
+    table.cell(t, 1, r, b, text_color = c, text_halign = text.align_right, text_size = size.small)
+
+f_head(int r, string a) =>
+    table.cell(t, 0, r, a, text_color = color.aqua, bgcolor = color.new(color.blue, 80), text_halign = text.align_left, text_size = size.small)
+    table.cell(t, 1, r, "", bgcolor = color.new(color.blue, 80))
+
+f_dir(int d) => d == 1 ? "HAUSSE" : "BAISSE"
+f_col(int d) => d == 1 ? color.lime : color.red
+
+f_pct(int a, int b) => b > 0 ? str.tostring(a) + " (" + str.tostring(100.0 * a / b, "#.0") + "%)" : "-"
+
+if barstate.islast and showPanel
+    f_head(0, "◆ MDT · AUTO SIGNALS")
+    f_head(1, "◇ SCANNER MTF")
+    f_row(2, "UT " + tf1, f_dir(d1), f_col(d1))
+    f_row(3, "UT " + tf2, f_dir(d2), f_col(d2))
+    f_row(4, "UT " + tf3, f_dir(d3), f_col(d3))
+    f_row(5, "UT " + tf4, f_dir(d4), f_col(d4))
+    string cons = votesL >= 3 ? "HAUSSIER" : votesS >= 3 ? "BAISSIER" : "MIXTE"
+    f_row(6, "Consensus", cons, votesL >= 3 ? color.lime : votesS >= 3 ? color.red : color.gray)
+    f_head(7, "◈ TRADE EN COURS")
+    if pos != 0
+        float curR = (close - ent) * pos / riskD
+        f_row(8,  "Entrée", str.tostring(ent, format.mintick))
+        f_row(9,  "SL", str.tostring(slCur, format.mintick), color.orange)
+        f_row(10, "TP1 " + str.tostring(tp1R, "#.0#") + "R", str.tostring(tp1, format.mintick), color.lime)
+        f_row(11, "TP2 " + str.tostring(tp2R, "#.0#") + "R", str.tostring(tp2, format.mintick), color.lime)
+        f_row(12, "Statut", tp1Hit ? "TP1 ✓ · BE" : "⏳ EN COURS")
+        f_row(13, "PnL", (curR >= 0 ? "+" : "") + str.tostring(curR, "#.00") + "R", curR >= 0 ? color.lime : color.red)
+        f_row(14, "Max", "+" + str.tostring(maxFav, "#.00") + "R")
+    else
+        f_row(8,  "Entrée", "-")
+        f_row(9,  "SL", "-")
+        f_row(10, "TP1", "-")
+        f_row(11, "TP2", "-")
+        f_row(12, "Statut", "✓ PRÊT", color.yellow)
+        f_row(13, "PnL", "-")
+        f_row(14, "Max", "-")
+    f_head(15, "◆ STATS GLOBALES (frais inclus)")
+    f_row(16, "Total / gagnants", f_pct(nWin, nTot))
+    f_row(17, "R moyen net", nTot > 0 ? (sumR / nTot >= 0 ? "+" : "") + str.tostring(sumR / nTot, "#.000") + "R" : "-",
+         nTot > 0 and sumR > 0 ? color.lime : color.red)
+    f_row(18, "R cumulé", nTot > 0 ? (sumR >= 0 ? "+" : "") + str.tostring(sumR, "#.0") + "R" : "-")
+    f_row(19, "TP1 touché", f_pct(nTp1, nTot))
+    f_row(20, "TP2 touché", f_pct(nTp2, nTot))
+    f_head(21, "◐ SESSIONS (gagnants)")
+    f_row(22, "LON", f_pct(array.get(sessW, 0), array.get(sessN, 0)))
+    f_row(23, "NY", f_pct(array.get(sessW, 1), array.get(sessN, 1)))
+    f_row(24, "ASIE / HORS", f_pct(array.get(sessW, 2), array.get(sessN, 2)) + " / " + f_pct(array.get(sessW, 3), array.get(sessN, 3)))
