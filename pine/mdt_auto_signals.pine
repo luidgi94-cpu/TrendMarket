@@ -1,5 +1,5 @@
 //@version=6
-// MDT-like Auto Signals v2 : UT Bot MTF + zones SMC (Order Blocks, FVG, OTE) + BE precoce + panneau + stats nettes
+// MDT-like Auto Signals v3 : UT Bot MTF + zones SMC (Order Blocks, FVG, OTE) + BE precoce + panneau + stats nettes
 // - Signaux ACHAT/VENTE avec SL / TP1 / TP2, break-even reglable (avant le TP1)
 // - Zones : OB (avec etoiles), FVG, OTE (retracement 0.62-0.79 de la derniere jambe)
 // - Stats simulees sur l'historique charge, nettes de frais. Non-repainting (bougies cloturees).
@@ -39,6 +39,13 @@ maxZ    = input.int(4, "Zones max par type", minval = 1, maxval = 15, group = g5
 fvgMin  = input.float(0.3, "FVG min (x ATR)", step = 0.1, group = g5)
 oteA    = input.float(0.62, "OTE debut (fib)", step = 0.01, group = g5)
 oteB    = input.float(0.79, "OTE fin (fib)", step = 0.01, group = g5)
+maxZoneATR = input.float(3.0, "Taille max d'un OB (x ATR)", step = 0.5, group = g5)
+g6 = "Confluence MTF des OB"
+htfA    = input.timeframe("15",  "OB TF 1", group = g6)
+htfB    = input.timeframe("60",  "OB TF 2", group = g6)
+htfC    = input.timeframe("240", "OB TF 3", group = g6)
+showHtf = input.bool(true, "Dessiner le dernier OB de chaque TF superieur (cadre pointille)", group = g6)
+onlyConf = input.bool(false, "Cacher les OB sans confluence", group = g6)
 
 // ---------- UT Bot ----------
 f_ut(float a, int len) =>
@@ -112,6 +119,142 @@ f_in(array<box> arr, float px) =>
                 r := true
     r
 
+// --- OB des timeframes superieurs (dernier OB non mitige de chaque cote) ---
+f_htfOb(int len) =>
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    var float hiL = na
+    var int   hiB = na
+    var bool  hiD = true
+    var float loL = na
+    var int   loB = na
+    var bool  loD = true
+    var float bT = na
+    var float bB = na
+    var float sT = na
+    var float sB = na
+    if not na(ph)
+        hiL := ph
+        hiB := bar_index - len
+        hiD := false
+    if not na(pl)
+        loL := pl
+        loB := bar_index - len
+        loD := false
+    if not na(hiL) and not hiD and close > hiL
+        hiD := true
+        int n = math.min(bar_index - hiB, 400)
+        float mn = low
+        int off = 0
+        for i = 0 to n
+            if low[i] < mn
+                mn := low[i]
+                off := i
+        bT := high[off]
+        bB := low[off]
+    if not na(loL) and not loD and close < loL
+        loD := true
+        int n2 = math.min(bar_index - loB, 400)
+        float mx = high
+        int off2 = 0
+        for i = 0 to n2
+            if high[i] > mx
+                mx := high[i]
+                off2 := i
+        sT := high[off2]
+        sB := low[off2]
+    if not na(bB) and close < bB
+        bT := na
+        bB := na
+    if not na(sT) and close > sT
+        sT := na
+        sB := na
+    [bT, bB, sT, sB]
+
+f_h(simple string tf) =>
+    request.security(syminfo.tickerid, tf, f_htfOb(swingLen), lookahead = barmerge.lookahead_off)
+
+f_tfName(string tf) =>
+    int sec = timeframe.in_seconds(tf)
+    sec < 3600 ? "M" + str.tostring(int(sec / 60)) : sec < 86400 ? "H" + str.tostring(int(sec / 3600)) : "D"
+
+[a1, a2, a3, a4] = f_h(htfA)
+[b1, b2, b3, b4] = f_h(htfB)
+[c1, c2, c3, c4] = f_h(htfC)
+bool okA = timeframe.in_seconds() < timeframe.in_seconds(htfA)
+bool okB = timeframe.in_seconds() < timeframe.in_seconds(htfB)
+bool okC = timeframe.in_seconds() < timeframe.in_seconds(htfC)
+
+var array<float> hbT = array.new<float>(3, na)
+var array<float> hbB = array.new<float>(3, na)
+var array<float> hsT = array.new<float>(3, na)
+var array<float> hsB = array.new<float>(3, na)
+array.set(hbT, 0, okA ? a1 : na)
+array.set(hbB, 0, okA ? a2 : na)
+array.set(hsT, 0, okA ? a3 : na)
+array.set(hsB, 0, okA ? a4 : na)
+array.set(hbT, 1, okB ? b1 : na)
+array.set(hbB, 1, okB ? b2 : na)
+array.set(hsT, 1, okB ? b3 : na)
+array.set(hsB, 1, okB ? b4 : na)
+array.set(hbT, 2, okC ? c1 : na)
+array.set(hbB, 2, okC ? c2 : na)
+array.set(hsT, 2, okC ? c3 : na)
+array.set(hsB, 2, okC ? c4 : na)
+array<string> hNames = array.from(f_tfName(htfA), f_tfName(htfB), f_tfName(htfC))
+
+// timeframes superieurs qui se recoupent avec la zone [bot, top]
+f_conf(float top, float bot, bool bull) =>
+    string r = ""
+    for i = 0 to 2
+        float ht = na
+        float hb = na
+        if bull
+            ht := array.get(hbT, i)
+            hb := array.get(hbB, i)
+        else
+            ht := array.get(hsT, i)
+            hb := array.get(hsB, i)
+        if not na(ht) and top >= hb and bot <= ht
+            r += (r == "" ? "" : "+") + array.get(hNames, i)
+    r
+
+var array<box> hBoxB = array.new<box>(3, na)
+var array<box> hBoxS = array.new<box>(3, na)
+f_hz(array<box> arr, int i, float top, float bot, string name, color c) =>
+    box cur = array.get(arr, i)
+    if na(top) or not showHtf
+        if not na(cur)
+            box.delete(cur)
+            array.set(arr, i, na)
+    else
+        if na(cur) or box.get_top(cur) != top or box.get_bottom(cur) != bot
+            if not na(cur)
+                box.delete(cur)
+            array.set(arr, i, box.new(bar_index, top, bar_index, bot, border_color = c, border_width = 2,
+                 border_style = line.style_dashed, bgcolor = color.new(c, 100), extend = extend.right,
+                 text = name, text_size = size.small, text_color = c, text_halign = text.align_left))
+
+f_refresh(array<box> arr, bool bull) =>
+    if array.size(arr) > 0
+        for i = 0 to array.size(arr) - 1
+            box b = array.get(arr, i)
+            string cf = f_conf(box.get_top(b), box.get_bottom(b), bull)
+            string base = array.get(str.split(box.get_text(b), " ⚡"), 0)
+            color c = bull ? color.green : color.red
+            if cf == ""
+                box.set_text(b, base)
+                box.set_text_color(b, onlyConf ? color.new(c, 100) : color.new(c, 0))
+                box.set_border_color(b, onlyConf ? color.new(c, 100) : color.new(c, 40))
+                box.set_bgcolor(b, onlyConf ? color.new(c, 100) : color.new(c, 85))
+                box.set_border_width(b, 1)
+            else
+                box.set_text(b, base + " ⚡" + cf)
+                box.set_text_color(b, color.yellow)
+                box.set_border_color(b, color.yellow)
+                box.set_bgcolor(b, color.new(c, 70))
+                box.set_border_width(b, 2)
+
 float piH = ta.pivothigh(high, swingLen, swingLen)
 float piL = ta.pivotlow(low, swingLen, swingLen)
 var float hiLvl = na
@@ -155,7 +298,7 @@ if not na(hiLvl) and not hiDone and close > hiLvl
     float hh = high
     for i = 0 to off
         hh := math.max(hh, high[i])
-    if showOb
+    if showOb and (high[off] - low[off]) <= maxZoneATR * atr
         int stars = 1 + (lastBullFvg >= bar_index - off ? 1 : 0) + (d4 == 1 ? 1 : 0)
         f_add(bullOb, bar_index - off, high[off], low[off], color.green, "OB+ " + str.repeat("★", stars))
     if showOte
@@ -180,7 +323,7 @@ if not na(loLvl) and not loDone and close < loLvl
     float ll = low
     for i = 0 to off2
         ll := math.min(ll, low[i])
-    if showOb
+    if showOb and (high[off2] - low[off2]) <= maxZoneATR * atr
         int stars2 = 1 + (lastBearFvg >= bar_index - off2 ? 1 : 0) + (d4 == -1 ? 1 : 0)
         f_add(bearOb, bar_index - off2, high[off2], low[off2], color.red, "OB- " + str.repeat("★", stars2))
     if showOte
@@ -196,6 +339,14 @@ f_mit(bullOb, true)
 f_mit(bearOb, false)
 f_mit(bullFvg, true)
 f_mit(bearFvg, false)
+f_refresh(bullOb, true)
+f_refresh(bearOb, false)
+f_hz(hBoxB, 0, array.get(hbT, 0), array.get(hbB, 0), array.get(hNames, 0) + " OB+", color.blue)
+f_hz(hBoxS, 0, array.get(hsT, 0), array.get(hsB, 0), array.get(hNames, 0) + " OB-", color.blue)
+f_hz(hBoxB, 1, array.get(hbT, 1), array.get(hbB, 1), array.get(hNames, 1) + " OB+", color.purple)
+f_hz(hBoxS, 1, array.get(hsT, 1), array.get(hsB, 1), array.get(hNames, 1) + " OB-", color.purple)
+f_hz(hBoxB, 2, array.get(hbT, 2), array.get(hbB, 2), array.get(hNames, 2) + " OB+", color.white)
+f_hz(hBoxS, 2, array.get(hsT, 2), array.get(hsB, 2), array.get(hNames, 2) + " OB-", color.white)
 if not na(oteL) and close < oteLOrigin
     box.set_extend(oteL, extend.none)
     box.set_right(oteL, bar_index)
@@ -239,6 +390,7 @@ var int   nTp1 = 0
 var int   nTp2 = 0
 var int   nBe = 0
 var float sumR = 0.0
+var float sumR2 = 0.0
 var array<int> sessN = array.from(0, 0, 0, 0)
 var array<int> sessW = array.from(0, 0, 0, 0)
 
@@ -278,6 +430,7 @@ if closedNow
     float net = resR - 2.0 * costPct / 100.0 * ent / riskD
     nTot += 1
     sumR += net
+    sumR2 += net * net
     if net > 0
         nWin += 1
     if tp1Hit
@@ -323,7 +476,7 @@ alertcondition(longSig,  "MDT ACHAT", "Signal ACHAT {{ticker}} {{interval}}")
 alertcondition(shortSig, "MDT VENTE", "Signal VENTE {{ticker}} {{interval}}")
 
 // ---------- Panneau ----------
-var table t = table.new(position.top_right, 2, 26, bgcolor = color.new(color.black, 15), border_width = 1,
+var table t = table.new(position.top_right, 2, 27, bgcolor = color.new(color.black, 15), border_width = 1,
      border_color = color.new(color.gray, 70), frame_width = 1, frame_color = color.new(color.gray, 40))
 
 f_row(int r, string a, string b, color c = color.white) =>
@@ -367,13 +520,19 @@ if barstate.islast and showPanel
         f_row(13, "PnL", "-")
         f_row(14, "Max", "-")
     f_head(15, "◆ STATS GLOBALES (frais inclus)")
-    f_row(16, "Total / gagnants", f_pct(nWin, nTot))
-    f_row(17, "R moyen net", nTot > 0 ? (sumR / nTot >= 0 ? "+" : "") + str.tostring(sumR / nTot, "#.000") + "R" : "-",
-         nTot > 0 and sumR > 0 ? color.lime : color.red)
-    f_row(18, "R cumulé", nTot > 0 ? (sumR >= 0 ? "+" : "") + str.tostring(sumR, "#.0") + "R" : "-")
-    f_row(19, "TP1 touché", f_pct(nTp1, nTot))
-    f_row(20, "TP2 touché", f_pct(nTp2, nTot))
-    f_row(21, "Sortis à BE", f_pct(nBe, nTot))
-    f_head(22, "◐ SESSIONS (gagnants)")
-    f_row(23, "LON / NY", f_pct(array.get(sessW, 0), array.get(sessN, 0)) + " / " + f_pct(array.get(sessW, 1), array.get(sessN, 1)))
-    f_row(24, "ASIE / HORS", f_pct(array.get(sessW, 2), array.get(sessN, 2)) + " / " + f_pct(array.get(sessW, 3), array.get(sessN, 3)))
+    float meanR = nTot > 0 ? sumR / nTot : na
+    float seR = nTot > 1 ? math.sqrt(math.max(sumR2 / nTot - meanR * meanR, 0.0) / nTot) : na
+    float lo95 = meanR - 1.96 * seR
+    float hi95 = meanR + 1.96 * seR
+    f_row(16, "Total / gagnants (BE inclus)", f_pct(nWin, nTot))
+    f_row(17, "R moyen net", nTot > 0 ? (meanR >= 0 ? "+" : "") + str.tostring(meanR, "#.000") + "R" : "-",
+         nTot > 0 and meanR > 0 ? color.lime : color.red)
+    f_row(18, "IC 95% du R moyen", nTot > 1 ? "[" + str.tostring(lo95, "#.00") + " ; " + str.tostring(hi95, "#.00") + "]" : "-",
+         nTot > 1 ? (lo95 > 0 ? color.lime : hi95 < 0 ? color.red : color.gray) : color.gray)
+    f_row(19, "R cumulé", nTot > 0 ? (sumR >= 0 ? "+" : "") + str.tostring(sumR, "#.0") + "R" : "-")
+    f_row(20, "TP1 touché", f_pct(nTp1, nTot))
+    f_row(21, "TP2 touché", f_pct(nTp2, nTot))
+    f_row(22, "Sortis à BE", f_pct(nBe, nTot))
+    f_head(23, "◐ SESSIONS (gagnants)")
+    f_row(24, "LON / NY", f_pct(array.get(sessW, 0), array.get(sessN, 0)) + " / " + f_pct(array.get(sessW, 1), array.get(sessN, 1)))
+    f_row(25, "ASIE / HORS", f_pct(array.get(sessW, 2), array.get(sessN, 2)) + " / " + f_pct(array.get(sessW, 3), array.get(sessN, 3)))
