@@ -1,0 +1,152 @@
+//@version=6
+// UT Bot + consensus MTF + SL/TP1/TP2/BE -- version STRATEGY (backtest avec frais reels)
+// Reproduction de la logique "MDT Auto Signals" : UT Bot (ATR trailing stop, QuantNomad) sur 4 TF.
+// Non-repainting : les TF superieurs sont lus en [1] + lookahead_on (valeur de la barre cloturee).
+strategy("UT Bot MTF Strategy", overlay = true, initial_capital = 10000,
+     default_qty_type = strategy.fixed, default_qty_value = 1, pyramiding = 0,
+     commission_type = strategy.commission.percent, commission_value = 0.05, slippage = 2,
+     calc_on_every_tick = false, max_labels_count = 500)
+
+// ---------- Inputs ----------
+g1 = "UT Bot"
+sens    = input.float(2.0, "Sensibilite (Key Value)", minval = 0.5, step = 0.1, group = g1)
+atrLen  = input.int(10, "ATR periode", minval = 1, group = g1)
+g2 = "Consensus MTF"
+tfA     = input.timeframe("15",  "TF 1", group = g2)
+tfB     = input.timeframe("60",  "TF 2", group = g2)
+tfC     = input.timeframe("240", "TF 3", group = g2)
+tfD     = input.timeframe("D",   "TF 4", group = g2)
+minVote = input.int(3, "Votes minimum (sur 4)", minval = 0, maxval = 4, group = g2)
+g3 = "Filtres"
+useEma  = input.bool(true,  "Filtre EMA", group = g3)
+emaLen  = input.int(200, "EMA", group = g3)
+useAdx  = input.bool(true,  "Filtre ADX (anti-range)", group = g3)
+adxMin  = input.float(20.0, "ADX min", group = g3)
+useSess = input.bool(false, "Filtre session (UTC)", group = g3)
+sessStr = input.session("0700-2100", "Session", group = g3)
+g4 = "Risque / Sorties"
+slMult  = input.float(1.5, "SL = x ATR", step = 0.1, group = g4)
+tp1R    = input.float(0.5, "TP1 (R)", step = 0.1, group = g4)
+tp1Pct  = input.float(50.0, "% position fermee au TP1", minval = 1, maxval = 99, group = g4)
+tp2R    = input.float(2.0, "TP2 (R)", step = 0.1, group = g4)
+riskPct = input.float(1.0, "Risque par trade (% equity)", step = 0.1, group = g4)
+maxLev  = input.float(3.0, "Levier max", step = 0.5, group = g4)
+flipEx  = input.bool(true, "Fermer sur signal UT inverse", group = g4)
+
+// ---------- UT Bot ----------
+f_ut(float a, int len) =>
+    float src   = close
+    float nLoss = a * ta.atr(len)
+    var float ts = 0.0
+    float p = nz(ts[1], src)
+    if src > p and src[1] > p
+        ts := math.max(p, src - nLoss)
+    else if src < p and src[1] < p
+        ts := math.min(p, src + nLoss)
+    else
+        ts := src > p ? src - nLoss : src + nLoss
+    int dir = src > ts ? 1 : -1
+    [ts, dir]
+
+f_utDir() =>
+    [t, d] = f_ut(sens, atrLen)
+    d
+
+f_mtf(simple string tf) =>
+    request.security(syminfo.tickerid, tf, f_utDir()[1], lookahead = barmerge.lookahead_on)
+
+[ts, dir] = f_ut(sens, atrLen)
+dA = f_mtf(tfA)
+dB = f_mtf(tfB)
+dC = f_mtf(tfC)
+dD = f_mtf(tfD)
+votesL = (dA == 1 ? 1 : 0) + (dB == 1 ? 1 : 0) + (dC == 1 ? 1 : 0) + (dD == 1 ? 1 : 0)
+votesS = (dA == -1 ? 1 : 0) + (dB == -1 ? 1 : 0) + (dC == -1 ? 1 : 0) + (dD == -1 ? 1 : 0)
+
+ema200 = ta.ema(close, emaLen)
+[_dip, _dim, adx] = ta.dmi(14, 14)
+atr    = ta.atr(atrLen)
+inSess = not useSess or not na(time(timeframe.period, sessStr, "UTC"))
+okCommon = inSess and (not useAdx or adx > adxMin)
+
+buy  = dir == 1  and dir[1] == -1
+sell = dir == -1 and dir[1] == 1
+longSig  = buy  and votesL >= minVote and okCommon and (not useEma or close > ema200)
+shortSig = sell and votesS >= minVote and okCommon and (not useEma or close < ema200)
+
+// ---------- Gestion du trade ----------
+var float pendRisk = na
+var float entryPx = na
+var float riskD = na
+var float tp1 = na
+var float tp2 = na
+var float stopCur = na
+var bool tp1Hit = false
+
+f_qty(float riskDist) =>
+    float q = strategy.equity * riskPct / 100.0 / riskDist
+    math.min(q, strategy.equity * maxLev / close)
+
+if flipEx and strategy.position_size > 0 and sell
+    strategy.close("L", comment = "flip")
+if flipEx and strategy.position_size < 0 and buy
+    strategy.close("S", comment = "flip")
+
+if longSig and strategy.position_size <= 0
+    pendRisk := atr * slMult
+    strategy.entry("L", strategy.long, qty = f_qty(pendRisk))
+if shortSig and strategy.position_size >= 0
+    pendRisk := atr * slMult
+    strategy.entry("S", strategy.short, qty = f_qty(pendRisk))
+
+float ps = math.sign(strategy.position_size)
+bool newPos = ps != 0 and ps != math.sign(strategy.position_size[1])
+if newPos
+    entryPx := strategy.position_avg_price
+    riskD   := pendRisk
+    tp1     := entryPx + ps * riskD * tp1R
+    tp2     := entryPx + ps * riskD * tp2R
+    stopCur := entryPx - ps * riskD
+    tp1Hit  := false
+
+if ps != 0 and not tp1Hit and not newPos
+    if ps > 0 ? high >= tp1 : low <= tp1
+        tp1Hit  := true
+        stopCur := entryPx // break-even apres TP1
+
+if ps > 0
+    strategy.exit("X1", "L", qty_percent = tp1Pct, limit = tp1, stop = stopCur)
+    strategy.exit("X2", "L", qty_percent = 100 - tp1Pct, limit = tp2, stop = stopCur)
+if ps < 0
+    strategy.exit("X1", "S", qty_percent = tp1Pct, limit = tp1, stop = stopCur)
+    strategy.exit("X2", "S", qty_percent = 100 - tp1Pct, limit = tp2, stop = stopCur)
+
+// ---------- Plots ----------
+plot(ts, "UT trailing stop", color = dir == 1 ? color.new(color.teal, 0) : color.new(color.red, 0), linewidth = 2)
+plotshape(longSig,  "Achat", shape.labelup,   location.belowbar, color.new(color.green, 0), text = "ACHAT", textcolor = color.white, size = size.tiny)
+plotshape(shortSig, "Vente", shape.labeldown, location.abovebar, color.new(color.red, 0),   text = "VENTE", textcolor = color.white, size = size.tiny)
+plot(ps != 0 ? tp1 : na, "TP1", color.new(color.lime, 30), style = plot.style_linebr)
+plot(ps != 0 ? tp2 : na, "TP2", color.new(color.green, 30), style = plot.style_linebr)
+plot(ps != 0 ? stopCur : na, "SL/BE", color.new(color.orange, 20), style = plot.style_linebr)
+
+// ---------- Panneau stats honnete (en R, avec frais) ----------
+var table t = table.new(position.top_right, 2, 7, bgcolor = color.new(color.black, 20), border_width = 1)
+if barstate.islast
+    int n = strategy.closedtrades
+    float wr = n > 0 ? strategy.wintrades / n * 100 : na
+    float pf = strategy.grossloss != 0 ? strategy.grossprofit / strategy.grossloss : na
+    float exp = n > 0 ? strategy.netprofit / n : na
+    table.cell(t, 0, 0, "Trades", text_color = color.white)
+    table.cell(t, 1, 0, str.tostring(n), text_color = color.white)
+    table.cell(t, 0, 1, "Win rate %", text_color = color.white)
+    table.cell(t, 1, 1, str.tostring(wr, "#.0"), text_color = color.white)
+    table.cell(t, 0, 2, "Profit factor", text_color = color.white)
+    table.cell(t, 1, 2, str.tostring(pf, "#.00"), text_color = color.white)
+    table.cell(t, 0, 3, "Esperance / trade", text_color = color.white)
+    table.cell(t, 1, 3, str.tostring(exp, "#.00"), text_color = color.white)
+    table.cell(t, 0, 4, "Net profit", text_color = color.white)
+    table.cell(t, 1, 4, str.tostring(strategy.netprofit, "#.00"), text_color = color.white)
+    table.cell(t, 0, 5, "Max DD", text_color = color.white)
+    table.cell(t, 1, 5, str.tostring(strategy.max_drawdown, "#.00"), text_color = color.white)
+    table.cell(t, 0, 6, "Frais inclus", text_color = color.white)
+    table.cell(t, 1, 6, "0.05% + 2 ticks", text_color = color.white)
