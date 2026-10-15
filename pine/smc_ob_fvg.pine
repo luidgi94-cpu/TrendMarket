@@ -103,12 +103,13 @@ f_add(array<box> arr, int left, float top, float bot, color c, string txt) =>
         box.delete(array.shift(arr))
 
 f_mitigate(array<box> arr, bool bull) =>
-    for i = array.size(arr) - 1 to 0 by 1
-        box b = array.get(arr, i)
-        if bull ? close < box.get_bottom(b) : close > box.get_top(b)
-            box.set_extend(b, extend.none)
-            box.set_right(b, bar_index)
-            array.remove(arr, i)
+    if array.size(arr) > 0
+        for i = array.size(arr) - 1 to 0
+            box b = array.get(arr, i)
+            if bull ? close < box.get_bottom(b) : close > box.get_top(b)
+                box.set_extend(b, extend.none)
+                box.set_right(b, bar_index)
+                array.remove(arr, i)
 
 // FVG
 bullGap = low > high[2] and close[1] > high[2] and (low - high[2]) > atr * fvgMin
