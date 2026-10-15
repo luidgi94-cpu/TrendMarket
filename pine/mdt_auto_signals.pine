@@ -3,7 +3,7 @@
 // - Signaux ACHAT/VENTE avec SL / TP1 / TP2, break-even reglable (avant le TP1)
 // - Zones : OB (avec etoiles), FVG, OTE (retracement 0.62-0.79 de la derniere jambe)
 // - Stats simulees sur l'historique charge, nettes de frais. Non-repainting (bougies cloturees).
-indicator("MDT-like Auto Signals v2", shorttitle = "MDT Auto", overlay = true, max_labels_count = 500, max_boxes_count = 300)
+indicator("MDT-like Auto Signals v3", shorttitle = "MDT Auto", overlay = true, max_labels_count = 500, max_boxes_count = 300)
 
 // ---------- Inputs ----------
 g1 = "UT Bot"
