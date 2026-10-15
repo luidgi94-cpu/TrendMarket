@@ -275,6 +275,30 @@ def table(d, feat, split):
     return pd.DataFrame(out)
 
 
+def sweep(df, a):
+    """Meme protocole sur chaque timeframe. Critere = ecart OB - placebo apparie, 2 moities, Bonferroni."""
+    from statistics import NormalDist
+    tfl = [t.strip() for t in a.tfs.split(",")]
+    tcrit = NormalDist().inv_cdf(1 - 0.025 / len(tfl))
+    print(f"\n## Balayage multi-TF (RR {a.rr}) -- seuil t corrige Bonferroni sur {len(tfl)} TF : |t| > {tcrit:.2f}")
+    print("tf      n     OB_R   placebo   ecart     t   ecart_1re  ecart_2e  verdict")
+    for tf in tfl:
+        x = df.resample(tf).agg({"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        htf = f"{int(pd.Timedelta(tf).total_seconds() * 4)}s"
+        d = study(x, a.swing, htf, a.rr, a.hold, a.max_age, a.fee, a.fvg_min, a.min_risk_atr, a.seed)
+        d = d.dropna(subset=["R_rand"]).reset_index(drop=True)
+        if len(d) < 50:
+            print(f"{tf:6s} trop peu de zones ({len(d)})")
+            continue
+        diff = d.R - d.R_rand
+        t = diff.mean() / (diff.std(ddof=1) / math.sqrt(len(d)))
+        sp = d.time.sort_values().iloc[int(len(d) * 0.6)]
+        e1, e2 = diff[d.time < sp].mean(), diff[d.time >= sp].mean()
+        ok = abs(t) > tcrit and e1 * e2 > 0
+        print(f"{tf:6s} {len(d):5d} {d.R.mean():+7.3f} {d.R_rand.mean():+8.3f} {diff.mean():+7.3f} {t:+6.2f}"
+              f"   {e1:+8.3f}  {e2:+8.3f}  {'TIENT' if ok else 'non'}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     src = ap.add_mutually_exclusive_group(required=True)
@@ -293,10 +317,14 @@ def main():
     ap.add_argument("--min-risk-atr", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out")
+    ap.add_argument("--tfs", help="balayage multi-timeframe a partir de donnees fines, ex: 1min,5min,15min,30min,1h,4h")
     a = ap.parse_args()
 
     df = load_csv(a.csv) if a.csv else load_binance(a.binance, a.interval, a.years) if a.binance else synthetic()
     print(f"# Donnees : {len(df)} barres, {df.index[0]} -> {df.index[-1]}")
+    if a.tfs:
+        sweep(df, a)
+        return
     d = study(df, a.swing, a.htf, a.rr, a.hold, a.max_age, a.fee, a.fvg_min, a.min_risk_atr, a.seed)
     if len(d) < 50:
         sys.exit(f"Trop peu de trades ({len(d)}) pour conclure.")
