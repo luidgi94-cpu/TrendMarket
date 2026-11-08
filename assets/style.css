@@ -64,3 +64,17 @@ a.card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(20,33,43,.1)
   .bar{position:relative}
   .hero{padding:44px 0 52px}
 }
+
+.tile{height:120px;border-radius:12px;display:grid;place-items:center;font-size:54px;background:linear-gradient(135deg,var(--g,#0f766e));margin:-4px -4px 10px;box-shadow:inset 0 -30px 40px rgba(0,0,0,.08)}
+.tile.small-tile{height:86px;font-size:40px}
+.item .badge{align-self:flex-start;margin:2px 0 0;background:#e6f4f2;color:var(--teal-d);font-size:12.5px;font-weight:700;border-radius:999px;padding:3px 10px;text-transform:uppercase;letter-spacing:.03em}
+.item .who{font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+.chips a{background:rgba(255,255,255,.14);color:#fff;text-decoration:none;font-weight:600;font-size:14.5px;padding:7px 13px;border-radius:999px;border:1px solid rgba(255,255,255,.25)}
+.chips a:hover{background:#fff;color:var(--teal-d)}
+.chips a:first-child{background:var(--orange);border-color:var(--orange)}
+.center{text-align:center;margin-top:22px}
+.btn.ghost{background:#fff;color:var(--teal-d);border:2px solid var(--teal);box-shadow:none}
+.btn.ghost:hover{background:var(--teal);color:#fff}
+.hero{padding:48px 0 54px}
+@media(max-width:860px){.tile{height:96px;font-size:44px}}

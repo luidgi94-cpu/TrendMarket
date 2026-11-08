@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://luidgi94-cpu.github.io/home-gym-malin/sitemap.xml
+Sitemap: https://luidgi94-cpu.github.io/TrendMarket/sitemap.xml
