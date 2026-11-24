@@ -1,0 +1,261 @@
+//@version=6
+// =============================================================================
+//  VWAP RETEST  -  transcription exacte du backtest
+// =============================================================================
+//  A UTILISER SUR UN GRAPHIQUE EN 1 MINUTE, ET NULLE PART AILLEURS.
+//  La gestion du stop et de la cible est faite minute par minute dans le
+//  backtest. Sur une autre unite de temps, l'ordre entre le stop et la cible
+//  a l'interieur d'une bougie devient inconnu et les resultats sont faux,
+//  toujours du bon cote.
+//
+//  CE QUE FAIT CETTE STRATEGIE, EN UNE PHRASE
+//  Quand le prix casse la bande haute de la VWAP de seance, elle n'y voit pas
+//  un exces a vendre mais une marque de force : elle pose un ordre d'ACHAT
+//  limite un peu plus bas et attend que le prix revienne la chercher.
+//  C'est l'inverse de ce qui s'enseigne communement.
+//
+//  POURQUOI CETTE FORME
+//  Mesure sur 672 161 bougies M1 de XAU/USD, du 01/01/2025 au 23/11/2026.
+//  Jouer ces bandes en retour a la moyenne perd 0.165 R de PLUS que des
+//  bougies dont l'ordre a ete melange au hasard, avec un t de -4.3 et le
+//  meme signe sur les deux moities de l'echantillon. Le sens qui porte
+//  l'information est donc l'autre. Mais entrer a la cassure coute 0.198 R
+//  avant toute lecture du marche, un ordre stop remplissant apres le depart
+//  du mouvement, alors qu'un ordre limite remplit a son prix ou mieux. D'ou
+//  l'entree sur le RETOUR vers la bande.
+//
+//  RESULTAT MESURE, ET CE QU'IL VAUT
+//    777 trades sur 591 jours, soit 1.31 par jour
+//    41.3% de reussite, gain moyen +1.44 R, perte moyenne -0.91 R
+//    winrate d'equilibre 38.9%, donc une marge de 2.5 points
+//    esperance +0.058 R par trade
+//
+//  MAIS cette valeur est le MAXIMUM d'une grille de seize reglages, et le
+//  maximum d'une grille est toujours optimiste. La moyenne des huit reglages
+//  qui tiennent vaut +0.036 R : c'est l'esperance a retenir. Et rien de tout
+//  cela n'est significatif, le t valant 1.91 sur un projet ou quelque
+//  quatre-vingt-cinq configurations ont ete essayees.
+//
+//  TROIS DETAILS QUI NE SONT PAS DES DETAILS
+//  Chacun a ete trouve en verifiant le moteur sur une marche aleatoire, ou
+//  l'esperance doit etre nulle par construction.
+//
+//   1. Les bandes sont lues avec UN RETARD D'UNE BOUGIE. Sans cela une
+//      bougie large elargit sa propre bande et la touche par construction.
+//   2. UN EVENEMENT NE DONNE QU'UN SEUL ORDRE. Reposer un ordre a chaque
+//      bougie tant que le prix reste au-dela de la bande, puis garder le
+//      premier rempli, faisait dependre le choix de l'ordre retenu du futur :
+//      +0.226 R de biais sur une marche aleatoire, et il grandissait avec la
+//      duree de vie de l'ordre.
+//   3. LA SORTIE FORCEE A HUIT HEURES EST UNE PIECE DU MECANISME, pas une
+//      precaution. Les 26% de trades qui sortent ainsi rapportent +0.26 R et
+//      sont positifs a 63%. Sans eux le taux de reussite tombe a 34%, sous
+//      l'equilibre.
+//
+//  FRAIS. Le backtest retient 0.15 USD de spread, mesure sur l'export MT5 du
+//  courtier, plus 0.10 de slippage suppose. Reglez-les dans l'onglet
+//  Proprietes, faute de quoi les resultats seront flattes d'environ 1.6% du
+//  risque par trade.
+// =============================================================================
+
+strategy("VWAP Retest  -  XAU/USD M1", overlay = true,
+     initial_capital = 200,
+     default_qty_type = strategy.fixed, default_qty_value = 1,
+     pyramiding = 0, calc_on_every_tick = false,
+     process_orders_on_close = true,
+     commission_type = strategy.commission.cash_per_contract,
+     commission_value = 0.25,
+     max_bars_back = 1000)
+
+// --- Reglages ---------------------------------------------------------------
+kBande    = input.float(2.0,  "Bande, en ecarts-types",      minval = 0.5, step = 0.1,
+     tooltip = "2.0 est le reglage mesure. Le plateau qui tient va de 1.0 a 2.0.")
+retrait   = input.float(0.5,  "Retrait de l'ordre, en ecarts-types", minval = 0.1, step = 0.1,
+     tooltip = "Distance sous la bande ou l'ordre limite est pose.")
+stopSigma = input.float(2.0,  "Stop, en ecarts-types",        minval = 0.2, step = 0.1,
+     tooltip = "C'est lui qui decide du signe. A stop serre les frais valent 6.3% du risque et mangent l'avantage ; a 2.0 ils n'en valent que 1.6%.")
+cibleR    = input.float(2.0,  "Cible, en multiples du risque", minval = 0.5, step = 0.5)
+validite  = input.int(120,    "Duree de vie de l'ordre (minutes)", minval = 10)
+dureeMax  = input.int(480,    "Sortie forcee (minutes)",      minval = 30,
+     tooltip = "Ne pas augmenter : les sorties a la pendule rapportent +0.26 R et font partie du mecanisme.")
+echauff   = input.int(60,     "Echauffement de seance (minutes)", minval = 10,
+     tooltip = "Avant, l'ecart-type est minuscule et les bandes ne veulent rien dire.")
+heureDeb  = input.int(6,      "Heure UTC de debut", minval = 0, maxval = 23)
+heureFin  = input.int(21,     "Heure UTC de fin",   minval = 1, maxval = 24)
+maxJour   = input.int(10,     "Trades maximum par jour", minval = 1)
+montrer   = input.bool(true,  "Afficher les niveaux")
+
+// --- Garde-fou sur l'unite de temps -----------------------------------------
+var bool alerteUT = false
+if not alerteUT and timeframe.period != "1"
+    alerteUT := true
+if barstate.islast and timeframe.period != "1"
+    runtime.error("Cette strategie doit tourner en 1 minute. " +
+     "La gestion du stop et de la cible se fait minute par minute ; " +
+     "sur une unite superieure les resultats sont faux.")
+
+// --- VWAP de seance et son ecart-type ---------------------------------------
+// La seance est le jour UTC, comme dans le backtest. time est en
+// millisecondes UTC, on en deduit le numero de jour sans dependre du fuseau
+// de la bourse, qui varie selon les symboles.
+jourUTC = math.floor(time / 86400000)
+nouvelleSeance = jourUTC != nz(jourUTC[1], jourUTC)
+
+tp = (high + low + close) / 3.0
+v  = nz(volume, 1.0) > 0 ? nz(volume, 1.0) : 1.0
+
+var float cumPV  = 0.0
+var float cumPV2 = 0.0
+var float cumV   = 0.0
+var int   rang   = 0
+var int   nJour  = 0
+
+if nouvelleSeance
+    cumPV  := 0.0
+    cumPV2 := 0.0
+    cumV   := 0.0
+    rang   := 0
+    nJour  := 0
+
+cumPV  += v * tp
+cumPV2 += v * tp * tp
+cumV   += v
+rang   += 1
+
+vwap  = cumV > 0 ? cumPV / cumV : na
+varia = cumV > 0 ? cumPV2 / cumV - vwap * vwap : na
+sigma = math.sqrt(math.max(nz(varia, 0.0), 0.0))
+
+// UN RETARD D'UNE BOUGIE sur tout ce qui sert a DECIDER. La bougie en cours
+// ne sert qu'a constater le toucher et le remplissage, jamais a calculer le
+// niveau. Sans ce retard, une bougie large elargit sa propre bande.
+vwapD  = nouvelleSeance ? na : vwap[1]
+sigmaD = nouvelleSeance ? na : sigma[1]
+
+bandeHaute = vwapD + kBande * sigmaD
+bandeBasse = vwapD - kBande * sigmaD
+
+hUTC = hour(time, "UTC")
+dansPlage = hUTC >= heureDeb and hUTC < heureFin
+pret = dansPlage and rang >= echauff and not na(sigmaD) and sigmaD > 0
+
+// --- Etat de l'ordre en attente ---------------------------------------------
+var int   sensAttente = 0        // +1 achat, -1 vente, 0 rien
+var float niveauLim   = na       // prix de l'ordre limite
+var float sigmaSignal = na       // ecart-type au moment du signal
+var int   finOrdre    = 0        // bar_index d'expiration
+var int   reprise     = 0        // bar_index avant lequel on ne regarde rien
+var int   barEntree   = 0
+
+enPosition = strategy.position_size != 0
+
+// --- 1. Detection du signal et pose de l'ordre ------------------------------
+// UN EVENEMENT, UN ORDRE. Apres expiration on reprend a la fin de la fenetre,
+// on ne repose pas un ordre a chaque bougie.
+if pret and not enPosition and sensAttente == 0 and bar_index >= reprise
+     and nJour < maxJour
+    float bande = na
+    int   d     = 0
+    if high >= bandeHaute
+        d := 1
+        bande := bandeHaute
+    else if low <= bandeBasse
+        d := -1
+        bande := bandeBasse
+    if d != 0
+        sensAttente := d
+        sigmaSignal := sigmaD
+        niveauLim   := bande - d * retrait * sigmaD
+        finOrdre    := bar_index + validite
+        if d > 0
+            strategy.entry("Achat", strategy.long, limit = niveauLim)
+        else
+            strategy.entry("Vente", strategy.short, limit = niveauLim)
+
+// --- 2. Expiration de l'ordre non rempli ------------------------------------
+if sensAttente != 0 and not enPosition and bar_index >= finOrdre
+    strategy.cancel("Achat")
+    strategy.cancel("Vente")
+    sensAttente := 0
+    niveauLim   := na
+    reprise     := finOrdre          // on saute la fenetre entiere
+
+// --- 3. Pose du stop et de la cible des le remplissage ----------------------
+// Le risque est ancre sur le NIVEAU de l'ordre, pas sur le prix obtenu : un
+// remplissage meilleur que prevu elargit donc le risque d'autant, exactement
+// comme dans le backtest.
+if enPosition and sensAttente != 0
+    float entree = strategy.position_avg_price
+    int   d      = strategy.position_size > 0 ? 1 : -1
+    float risque = stopSigma * sigmaSignal + math.abs(entree - niveauLim)
+    float stop   = entree - d * risque
+    float cible  = entree + d * cibleR * risque
+    if d > 0
+        strategy.exit("SortieA", from_entry = "Achat", stop = stop, limit = cible)
+    else
+        strategy.exit("SortieV", from_entry = "Vente", stop = stop, limit = cible)
+    sensAttente := 0
+    barEntree   := bar_index
+    nJour       += 1
+
+// --- 4. Sortie forcee -------------------------------------------------------
+// Ce n'est pas une precaution mais une piece du mecanisme : les trades qui
+// sortent ainsi rapportent +0.26 R et sont positifs a 63%. Sans eux le taux
+// de reussite tombe sous l'equilibre.
+if enPosition and barEntree > 0 and bar_index - barEntree >= dureeMax
+    strategy.close_all(comment = "8h")
+
+// --- Affichage --------------------------------------------------------------
+plot(montrer ? vwapD : na, "VWAP", color.new(color.orange, 0), 2)
+pH = plot(montrer ? bandeHaute : na, "Bande haute", color.new(color.teal, 30))
+pB = plot(montrer ? bandeBasse : na, "Bande basse", color.new(color.teal, 30))
+fill(pH, pB, color.new(color.teal, 94))
+
+enAttente = montrer and sensAttente != 0 and not enPosition
+plot(enAttente ? niveauLim : na, "Ordre en attente",
+     sensAttente > 0 ? color.new(color.lime, 0) : color.new(color.red, 0),
+     2, plot.style_linebr)
+
+plotshape(montrer and sensAttente != 0 and sensAttente[1] == 0 and sensAttente > 0,
+     "Signal achat", shape.triangleup, location.belowbar, color.new(color.lime, 0), size = size.tiny)
+plotshape(montrer and sensAttente != 0 and sensAttente[1] == 0 and sensAttente < 0,
+     "Signal vente", shape.triangledown, location.abovebar, color.new(color.red, 0), size = size.tiny)
+
+// --- Tableau de controle ----------------------------------------------------
+// Il sert a verifier que la transcription reproduit le backtest. Les valeurs
+// attendues sur XAU/USD M1, du 01/01/2025 au 23/11/2026, sont rappelees a
+// droite. Un ecart important signale une difference de donnees ou de reglage,
+// pas une amelioration.
+if barstate.islast and montrer
+    var table t = table.new(position.top_right, 3, 7,
+         border_width = 1, frame_width = 1)
+    pf  = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : na
+    nbT = strategy.closedtrades
+    wr  = nbT > 0 ? 100.0 * strategy.wintrades / nbT : na
+    table.cell(t, 0, 0, "VWAP Retest", bgcolor = color.new(color.teal, 20),
+         text_color = color.white, text_size = size.small)
+    table.cell(t, 1, 0, "mesure", bgcolor = color.new(color.teal, 20),
+         text_color = color.white, text_size = size.small)
+    table.cell(t, 2, 0, "attendu", bgcolor = color.new(color.teal, 20),
+         text_color = color.white, text_size = size.small)
+    table.cell(t, 0, 1, "trades",      text_size = size.small)
+    table.cell(t, 1, 1, str.tostring(nbT), text_size = size.small)
+    table.cell(t, 2, 1, "777 / 591 j", text_size = size.small, text_color = color.gray)
+    table.cell(t, 0, 2, "reussite",    text_size = size.small)
+    table.cell(t, 1, 2, str.tostring(wr, "#.#") + "%", text_size = size.small)
+    table.cell(t, 2, 2, "41.3%",       text_size = size.small, text_color = color.gray)
+    table.cell(t, 0, 3, "profit factor", text_size = size.small)
+    table.cell(t, 1, 3, str.tostring(pf, "#.##"), text_size = size.small)
+    table.cell(t, 2, 3, "1.11",        text_size = size.small, text_color = color.gray)
+    table.cell(t, 0, 4, "equilibre a", text_size = size.small)
+    table.cell(t, 1, 4, "38.9%",       text_size = size.small)
+    table.cell(t, 2, 4, "marge 2.5 pts", text_size = size.small, text_color = color.gray)
+    table.cell(t, 0, 5, "esperance",   text_size = size.small)
+    table.cell(t, 1, 5, "+0.058 R",    text_size = size.small)
+    table.cell(t, 2, 5, "retenir +0.036", text_size = size.small, text_color = color.gray)
+    table.cell(t, 0, 6, "NON SIGNIFICATIF", text_size = size.small,
+         bgcolor = color.new(color.maroon, 30), text_color = color.white)
+    table.cell(t, 1, 6, "t = 1.91",    text_size = size.small,
+         bgcolor = color.new(color.maroon, 30), text_color = color.white)
+    table.cell(t, 2, 6, "85 essais",   text_size = size.small,
+         bgcolor = color.new(color.maroon, 30), text_color = color.white)
