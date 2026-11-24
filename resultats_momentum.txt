@@ -8,3 +8,5 @@ sous-estiment donc plutot qu'elles ne flattent.
 ECHANTILLON COMPLET  (591 jours)
   configuration            n   freq    WR  stop stop/M1 cible     R   EUR/mois  temoin   ecart     t
   --------------------------------------------------------------------------------------------------------
+  repli 0.08, stop 0.06   3654  6.18  33.6%  4.06   2.8! 2.00R -0.065      -38  -0.081  +0.016  +0.68
+  repli 0.12, stop 0.06   3597  6.09  33.9%  4.12   2.9! 2.00R -0.055      -32  -0.087  +0.032  +1.34
