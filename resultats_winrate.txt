@@ -1,0 +1,22 @@
+TAUX DE REUSSITE : 41.3%   (321 gagnants / 456 perdants sur 777)
+
+CE QU'IL FAUT POUR QUE CE CHIFFRE SUFFISE
+  gain moyen quand tu gagnes   +1.438 R
+  perte moyenne quand tu perds -0.914 R
+  rapport gain/perte            1.57
+  winrate d'equilibre           38.9%
+  winrate reel                  41.3%
+  MARGE                         +2.5 points
+
+  esperance = 41.3% x 1.438 - 58.7% x 0.914 = +0.0576 R
+  (R moyen effectivement mesure : +0.0576 R)
+
+DETAIL PAR TYPE DE SORTIE
+  cible         194 trades (25.0%)  R moyen +1.977  dont 100.0% positifs
+  stop          381 trades (49.0%)  R moyen -1.024  dont   0.0% positifs
+  fin_fenetre   202 trades (26.0%)  R moyen +0.255  dont  62.9% positifs
+
+COMPARAISON AVEC TON INDICATEUR AUTO VENTE
+                           winrate  gain moyen   equilibre    marge
+  AUTO VENTE                 64.2%     +0.52 R       65.8% -1.6 pts
+  cette strategie            41.3%      +1.44 R       38.9%    +2.5 pts
