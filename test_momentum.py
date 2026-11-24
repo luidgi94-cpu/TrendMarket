@@ -47,15 +47,20 @@ RISQUE_EUR = 4.50          # 1% de 450 euros
 JOURS_MOIS = 21
 
 CONFIGS = [
-    ("repli 0.08, stop 0.04", dict(repli_vol=0.08, stop_vol=0.04)),
-    ("repli 0.12, stop 0.04", dict(repli_vol=0.12, stop_vol=0.04)),
+    # Stops serres, du calibre que l'utilisateur trade reellement. Le biais
+    # y est conservateur, environ -0.02 R, la bougie d'entree testant le
+    # stop sans tester la cible : ces lignes sous-estiment plutot.
+    ("repli 0.08, stop 0.06", dict(repli_vol=0.08, stop_vol=0.06)),
     ("repli 0.12, stop 0.06", dict(repli_vol=0.12, stop_vol=0.06)),
     ("repli 0.20, stop 0.06", dict(repli_vol=0.20, stop_vol=0.06)),
+    # Stops au-dela du seuil de fiabilite du backtest.
+    ("repli 0.12, stop 0.10", dict(repli_vol=0.12, stop_vol=0.10)),
     ("repli 0.20, stop 0.10", dict(repli_vol=0.20, stop_vol=0.10)),
-    ("repli 0.30, stop 0.10", dict(repli_vol=0.30, stop_vol=0.10)),
-    ("repli 0.12, cible 1R",  dict(repli_vol=0.12, stop_vol=0.06, cible_r=1.0)),
-    ("repli 0.12, cible 3R",  dict(repli_vol=0.12, stop_vol=0.06, cible_r=3.0)),
-    ("CONTRE repli 0.12",     dict(repli_vol=0.12, stop_vol=0.06,
+    ("repli 0.20, stop 0.15", dict(repli_vol=0.20, stop_vol=0.15)),
+    ("repli 0.30, stop 0.15", dict(repli_vol=0.30, stop_vol=0.15)),
+    ("repli 0.20, cible 1R",  dict(repli_vol=0.20, stop_vol=0.10, cible_r=1.0)),
+    ("repli 0.20, cible 3R",  dict(repli_vol=0.20, stop_vol=0.10, cible_r=3.0)),
+    ("CONTRE repli 0.20",     dict(repli_vol=0.20, stop_vol=0.10,
                                    sens="contre")),
 ]
 
@@ -102,7 +107,7 @@ def bloc(m1: pd.DataFrame, titre: str, graine: int, rng_m1: float) -> dict:
         eur = r["R"] * RISQUE_EUR * r["jour"] * JOURS_MOIS
         ratio = r["stop"] / rng_m1
         out[nom] = (ec, r["jour"], r["R"], r["wr"], eur, ratio)
-        marque = " " if ratio >= 5 else "!"
+        marque = " " if ratio >= 5 else "!"   # stop petit devant la bougie
         print(f"  {nom:<22} {r['n']:>5} {r['jour']:>5.2f} {r['wr']:5.1f}% "
               f"{r['stop']:5.2f} {ratio:5.1f}{marque} {r['cr']:4.2f}R "
               f"{r['R']:+.3f} {eur:>+8.0f}  {rt:+.3f}  {ec:+.3f}  {t:+5.2f}",
@@ -117,8 +122,10 @@ def main(chemin: str) -> None:
     print(f"{len(m1):,} bougies M1 | "
           f"{m1.index[0]:%d/%m/%Y} au {m1.index[-1]:%d/%m/%Y}")
     print(f"amplitude mediane d'une bougie M1 : {rng_m1:.3f} USD")
-    print("Un '!' dans la colonne stop/M1 signale un stop trop petit devant")
-    print("la bougie : sous environ 5, le backtest n'est pas interpretable.")
+    print("Un '!' dans la colonne stop/M1 signale un stop petit devant la")
+    print("bougie. Le biais y est CONSERVATEUR, environ -0.02 R : la bougie")
+    print("d'entree teste le stop sans tester la cible. Ces lignes")
+    print("sous-estiment donc plutot qu'elles ne flattent.")
 
     tout = bloc(m1, "ECHANTILLON COMPLET", GRAINE, rng_m1)
     coupe = m1.index[len(m1) // 2]
@@ -135,9 +142,7 @@ def main(chemin: str) -> None:
         ec, fr, R, wr, eur, ratio = tout[nom]
         va = a.get(nom, (np.nan,))[0]
         vb = b.get(nom, (np.nan,))[0]
-        if ratio < 5:
-            v = "stop trop petit, non interpretable"
-        elif np.isnan(va) or np.isnan(vb):
+        if np.isnan(va) or np.isnan(vb):
             v = "indeterminable"
         elif va > 0 and vb > 0:
             v = "POSITIF DES DEUX COTES"

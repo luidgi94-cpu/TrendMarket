@@ -1,0 +1,10 @@
+672,161 bougies M1 | 01/01/2025 au 23/11/2026
+amplitude mediane d'une bougie M1 : 1.440 USD
+Un '!' dans la colonne stop/M1 signale un stop petit devant la
+bougie. Le biais y est CONSERVATEUR, environ -0.02 R : la bougie
+d'entree teste le stop sans tester la cible. Ces lignes
+sous-estiment donc plutot qu'elles ne flattent.
+
+ECHANTILLON COMPLET  (591 jours)
+  configuration            n   freq    WR  stop stop/M1 cible     R   EUR/mois  temoin   ecart     t
+  --------------------------------------------------------------------------------------------------------
