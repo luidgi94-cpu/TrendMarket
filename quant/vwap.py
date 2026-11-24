@@ -202,3 +202,129 @@ def backtest_vwap(m1: pd.DataFrame, cfg: VwapConfig):
                "stop_median": df.stop_dist.median(),
                "cible_r_median": df.cible_r.median()}
     return df, st
+
+
+@dataclass
+class RetestConfig(VwapConfig):
+    """Cassure de bande, puis RETOUR sur la bande, pris a l'ordre limite.
+
+    POURQUOI CETTE FORME, ET PAS UNE AUTRE
+    Trois mesures la designent, et c'est la premiere fois qu'elles sont
+    reunies.
+
+      La bande de VWAP est l'evenement qui porte le plus d'information de
+      tout ce projet : la jouer en retour a la moyenne perd 0.165 R de plus
+      que le hasard, avec un t de -4.3, sur les deux moities et pour toutes
+      les largeurs de bande essayees. Rien d'autre n'a produit un effet
+      aussi gros ni aussi stable.
+
+      Le sens qui gagne est donc l'autre : aller AVEC le mouvement donne
+      +0.104 R face au temoin, positif sur les deux moities.
+
+      Mais l'entrer a la cassure coute 0.198 R avant toute lecture du
+      marche, parce qu'un ordre stop remplit APRES le depart du mouvement.
+      L'ordre limite, lui, a un temoin a peu pres nul.
+
+    D'ou : declencher sur la bande, aller dans le sens du mouvement, et
+    entrer a l'ordre LIMITE sur le retour, et non a l'ordre stop sur la
+    cassure.
+    """
+    retrace_sigma: float = 0.5    # retour attendu, en ecarts-types
+    validite_min: int = 120       # duree de vie de l'ordre, en minutes
+
+
+def backtest_retest(m1: pd.DataFrame, cfg: RetestConfig):
+    vwap, sig, rang, jour = _bandes(m1, cfg)
+    o = m1.open.to_numpy(); h = m1.high.to_numpy()
+    l = m1.low.to_numpy(); c = m1.close.to_numpy()
+    heures = m1.index.hour.to_numpy()
+    n = len(m1)
+
+    ouvert = (heures >= cfg.heures[0]) & (heures < cfg.heures[1]) \
+        & (rang >= cfg.echauffement) & np.isfinite(sig) & (sig > 0)
+
+    trades = []
+    par_jour = {}
+    j = 1
+    while j < n - 1:
+        if not ouvert[j]:
+            j += 1; continue
+        jr = jour[j]
+        if par_jour.get(jr, 0) >= cfg.max_trades_jour:
+            j += 1; continue
+
+        haute = vwap[j] + cfg.k * sig[j]
+        basse = vwap[j] - cfg.k * sig[j]
+        # Le mouvement atteint une bande : on va DANS son sens.
+        if h[j] >= haute:
+            d, bande = 1, haute
+        elif l[j] <= basse:
+            d, bande = -1, basse
+        else:
+            j += 1; continue
+
+        # Ordre limite pose en RETRAIT de la bande, du cote d'ou vient le
+        # prix. On achete donc un repli apres une cassure haussiere.
+        limite = bande - d * cfg.retrace_sigma * sig[j]
+        fin_ordre = min(j + cfg.validite_min, n - 1)
+        touche = -1
+        for t in range(j + 1, fin_ordre):
+            if (l[t] <= limite) if d > 0 else (h[t] >= limite):
+                touche = t; break
+        if touche < 0:
+            # UN EVENEMENT, UN ORDRE. Reprendre a j+1 reposerait un ordre a
+            # chaque bougie tant que le prix reste au-dela de la bande, et
+            # le moteur garderait le premier qui se remplit : le choix de
+            # l'ordre retenu dependrait alors du futur. Mesure du defaut sur
+            # marche aleatoire, ou l'esperance doit etre nulle : +0.049 R
+            # avec un ordre valable quinze minutes, +0.085 a trente,
+            # +0.203 a cent vingt, +0.286 a quatre cent quatre-vingts. Le
+            # biais grandit avec la duree de vie de l'ordre, ce qui le
+            # designe sans ambiguite. On saute donc la fenetre entiere.
+            j = fin_ordre; continue
+
+        entree = min(limite, o[touche]) if d > 0 else max(limite, o[touche])
+        risque = cfg.stop_sigma * sig[j] + abs(entree - limite)
+        if risque <= 0:
+            j = touche + 1; continue
+        stop = entree - d * risque
+        cible = entree + d * cfg.cible_r * risque
+        cible_r = (cible - entree) * d / risque
+
+        fin = touche
+        sortie, pourquoi = 0.0, "fin_fenetre"
+        if (l[touche] <= stop) if d > 0 else (h[touche] >= stop):
+            sortie, pourquoi = -1.0, "stop"
+        else:
+            vu = False
+            for t in range(touche + 1, min(touche + cfg.duree_max_min, n)):
+                fin = t
+                if (l[t] <= stop) if d > 0 else (h[t] >= stop):
+                    sortie, pourquoi, vu = -1.0, "stop", True
+                    break
+                if (h[t] >= cible) if d > 0 else (l[t] <= cible):
+                    sortie, pourquoi, vu = cible_r, "cible", True
+                    break
+            if not vu:
+                sortie = (c[fin] - entree) * d / risque
+
+        cout = (cfg.spread_usd + cfg.slippage_usd) * cfg.units
+        pnl = sortie * risque * cfg.units - cout
+        par_jour[jr] = par_jour.get(jr, 0) + 1
+        trades.append({"ts": m1.index[touche], "date": jr,
+                       "sens": "long" if d > 0 else "short",
+                       "entree": entree, "stop_dist": risque,
+                       "cible_r": cible_r, "R": pnl / (risque * cfg.units),
+                       "pnl": pnl, "sortie": pourquoi, "i": touche,
+                       "i_fin": fin})
+        j = fin + 1
+
+    df = pd.DataFrame(trades)
+    nj = pd.Index(jour).nunique()
+    st = {"jours": nj, "nb_trades": len(df),
+          "trades_par_jour": len(df) / nj if nj else 0.0}
+    if not df.empty:
+        st |= {"winrate": (df.pnl > 0).mean(), "R_moyen": df.R.mean(),
+               "stop_median": df.stop_dist.median(),
+               "cible_r_median": df.cible_r.median()}
+    return df, st

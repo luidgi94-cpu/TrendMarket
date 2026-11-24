@@ -1,0 +1,9 @@
+672,161 bougies M1 | 01/01/2025 au 23/11/2026
+amplitude mediane d'une bougie M1 : 1.440 USD
+MOTEUR VERIFIE : rend -0.045 a +0.005 R sur marche aleatoire
+sans derive, ou la reponse doit etre zero.
+
+ECHANTILLON COMPLET  (591 jours)
+  configuration           n   freq    WR  stop stop/M1 cible     R   EUR/mois  temoin   ecart     t
+  -------------------------------------------------------------------------------------------------------
+  k2.0 ret0.5 stop1.0    1037  1.75  35.3%  7.95   5.5  2.00R -0.018       -3  -0.062  +0.044  +1.02
