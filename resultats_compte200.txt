@@ -1,0 +1,31 @@
+CONFIGURATION : bande 2 sigma, entree 1.5 sigma, stop 2 sigma, cible 2 R
+  777 trades mesures, WR 41.3%, R moyen +0.058, ecart-type 1.26
+  stop median 15.64 USD | lot 0.001 = 0.1 oz
+  risque par trade 1.44 EUR = 0.72% d'un compte de 200 EUR
+  1.31 trades/jour, soit 331 par an
+
+UNE ANNEE DE CE SYSTEME, 20,000 simulations tirees des vrais trades
+                         pire 5%  quartile bas    median  quartile haut  meilleur 5%
+  capital final (EUR)        174           205       227            250          283
+  pire recul (%)           -24.7         -16.1     -12.0           -9.1         -6.5
+
+  probabilite de finir l'annee en PERTE : 19.9%
+  probabilite d'un recul de plus de 20% : 12.5%
+  probabilite d'un recul de plus de 30% : 1.6%
+  pire serie de pertes consecutives attendue sur l'annee : 11 trades, soit 7.9% du compte
+
+
+ET SI L'AVANTAGE N'EXISTAIT PAS ?
+La simulation precedente suppose que le +0.058 R mesure est REEL.
+Or il n'est pas etabli statistiquement. Voici la meme annee avec
+exactement les memes trades, mais l'avantage retire.
+
+hypothese                       median   pire 5%   perte ?  recul median
+------------------------------------------------------------------------
+avantage reel (+0.058 R)           227       174       20%        -12.0%
+avantage nul (0.000 R)             201       146       49%        -16.6%
+moitie de l'avantage               213       160       34%        -14.3%
+
+La colonne 'recul median' ne change PAS selon l'hypothese : tu
+subiras les memes creux dans les trois cas. Seule la destination
+change, et c'est precisement ce qu'on ne sait pas encore.
