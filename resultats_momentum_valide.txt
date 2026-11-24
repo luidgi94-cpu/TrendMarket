@@ -1,0 +1,38 @@
+Quatre series de 588,000 minutes chacune, SANS FRAIS.
+L'erreur-type est calculee ENTRE series independantes, jamais a
+l'interieur d'une seule : les trades d'une meme serie partagent
+le meme chemin de prix et leurs t internes sont gonfles.
+
+Amplitude mediane d'une bougie M1 : 1.85 USD
+
+1. JUSTESSE SELON LA TAILLE DU STOP  -  l'esperance doit etre ZERO
+   Un stop trop petit devant une bougie M1 saute par simple
+   discretisation, et le moteur perd de l'argent a partir de rien.
+    stop_vol   stop $  stop/M1      n      WR        R     se      t  verdict
+   -------------------------------------------------------------------------
+        0.08     5.27      2.8   2845   32.7%   -0.020  0.006  -3.10  <<< BIAISE
+        0.15     9.80      5.3   1680   32.8%   -0.019  0.025  -0.78  OK
+        0.25    16.85      9.1    927   35.5%   +0.019  0.022  +0.87  OK
+        0.40    27.81     15.0    578   39.8%   -0.005  0.015  -0.31  OK
+
+   Regle a retenir : sous environ cinq amplitudes de bougie M1,
+   un backtest n'est pas fiable. Sur l'or reel, ou une bougie M1
+   couvre 0.50 USD, cela fait un stop d'au moins 2.50 USD.
+
+2. PUISSANCE  -  tendance INJECTEE, le moteur doit la VOIR
+   stop_vol = 0.25, zone ou le moteur est verifie juste.
+     alpha       sens      n      WR        R     se      t  verdict
+   ------------------------------------------------------------------
+     0.000   momentum    927   35.5%   +0.019  0.022  +0.87  reference
+     0.000     contre    904   33.7%   -0.027  0.022  -1.24  reference
+     0.013   momentum    902   37.7%   +0.088  0.024  +3.70  DETECTE
+     0.013     contre    876   33.1%   -0.061  0.018  -3.38  inverse OK
+     0.030   momentum    751   44.4%   +0.279  0.027 +10.38  DETECTE
+     0.030     contre    810   31.7%   -0.104  0.022  -4.76  inverse OK
+     0.060   momentum    552   49.2%   +0.426  0.016 +26.87  DETECTE
+     0.060     contre    688   29.4%   -0.160  0.015 -10.49  inverse OK
+
+   Le moteur voit une tendance valant un cinquieme du bruit, et
+   la voit a l'envers quand on le retourne. Un 'rien trouve' de sa
+   part aura donc un sens, ce qui n'etait garanti nulle part
+   jusqu'ici dans ce projet.
